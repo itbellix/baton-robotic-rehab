@@ -1,5 +1,5 @@
-# MUST: musculoskeletal trajectory optimization
-MUST is a novel method for planning musculoskeletal-aware robotic rehabilitation trajectories for rotator cuff therapy. It embeds a human musculoskeletal model into the robotic controller to plan trajectories that achieve a desired final human pose while minimizing strain in selected tendons and accounting for the dynamics of the human arm with which the robot interacts.
+# BATON: Biomechanics-Aware Trajectory Optimization for Navigation during robotic physiotherapy
+BATON is a novel method for planning biomechanics-aware robotic rehabilitation trajectories for rotator cuff therapy. It embeds a human musculoskeletal model into the robotic controller to plan trajectories that achieve a desired final human pose while minimizing strain in selected tendons and accounting for the dynamics of the human arm with which the robot interacts.
 
 <img src="Media/visual_abstract_1.svg" height="300" />
 
@@ -7,7 +7,7 @@ Our approach is presented in detail in:
 
 ```bib
 @article{must,
-  title={MUST: musculoskeletal},
+  title={Biomechanics-Aware Trajectory Optimization for Navigation during Robotic Physiotherapy},
   author={Belli, Italo and Prendergast, J Micah and Seth, Ajay and Peternel, Luka},
   journal={XX},
 }
@@ -42,7 +42,7 @@ When rehabilitating from rotator cuff tears, physiotherapy aims at gaining a lar
 - _strain maps_, which give insights into how tendons are elongated during the rehabilitation movement (as a consequence of the position of the patient, and of the activation in the corresponding muscles)
 - _skeletal dynamics_, capturing the way in which the human position evolves as a function of torques applied to the human model
 
-These two elements are combined in an optimal control problem, that can be solved efficiently in 0.12 s over a time horizon of 1 s divided in 10 steps.
+These two elements are combined in an optimal control problem that can be solved efficiently in 0.12 s over a time horizon of 1 s divided into 10 steps.
 
 We exploit a customized version of OpenSimAD that allows us to retrieve a differentiable expression for the dynamics of the original OpenSim model, and can be natively interfaced with CasADi.
 
