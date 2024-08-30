@@ -47,7 +47,7 @@ These two elements are combined in an optimal control problem that can be solved
 We exploit a customized version of OpenSimAD that allows us to retrieve a differentiable expression for the dynamics of the original OpenSim model, and can be natively interfaced with CasADi.
 
 ## Requirements
-In order to run **MUST** you will need:
+In order to run **BATON** you will need:
 - CasADi (avaible here: https://web.casadi.org/)
 - an OpenSimAD Conda environment (which can be set up following the instructions at https://github.com/antoinefalisse/opensimAD)
 
