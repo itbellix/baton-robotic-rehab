@@ -1,7 +1,7 @@
 # BATON: Biomechanics-Aware Trajectory Optimization for Navigation during robotic physiotherapy
 BATON is a novel method for planning biomechanics-aware robotic rehabilitation trajectories for rotator cuff therapy. It embeds a human musculoskeletal model into the robotic controller to plan trajectories that achieve a desired final human pose while minimizing strain in selected tendons and accounting for the dynamics of the human arm with which the robot interacts.
 
-<img src="Media/visual_abstract_1.svg" height="300" />
+<img src="Media/visual_abstract.png" height="300" />
 
 Our approach is presented in detail in:
 
