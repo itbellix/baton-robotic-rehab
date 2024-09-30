@@ -1,5 +1,5 @@
 """
-This script interpolates a strainmap, through Radial Basis Function interpolation.
+This script interpolates a strain map, through Radial Basis Function interpolation.
 The single strain-map is interpolated with a sum of 2-dimensional Gaussians G_i(x,y), defined as:
 G_i(x,y) = A * np.exp( -((x-x0)/xalpha)**2 -((y-y0)/yalpha)**2)
 
@@ -9,7 +9,7 @@ is determined), or the fixed number of Gaussians to be used in the interpolation
 The parameters of these Gaussians are identified, printed to screen, and optionally saved 
 (to "params_strainmaps.pkl").
 
-Note: the parameters of the Gaussians are found approximating a "normalized strainmap".
+Note: the parameters of the Gaussians are found approximating a "normalized strain map".
       This facilitates the fitting, but requires to remember that the x-y coordinates indicating
       plane of elevation and shoulder elevation have been normalized dividing them by their 
       respective maximum value.

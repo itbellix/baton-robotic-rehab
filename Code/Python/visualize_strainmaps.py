@@ -1,4 +1,4 @@
-# This script allows to visualize the strainmaps for a given muscle
+# This script allows to visualize the strain maps for a given muscle
 
 import os
 import numpy as np
@@ -17,10 +17,10 @@ strainmaps_path = 'Personal_Results/Strains/Passive/AllMuscles'
 # file containing all the strains (when muscles are relaxed)
 file_name = 'All_0.npy'
 
-# do we want to save the 2D figures of the strainmaps?
+# do we want to save the 2D figures of the strain maps?
 save_2D = True
 
-# do we want to visualize the 3D strainmaps?
+# do we want to visualize the 3D strain maps?
 viz_3D = True
 
 # create a folder where to save the results (and the plots, if print_flag is True)
@@ -29,7 +29,7 @@ os.makedirs(os.path.join(path_to_repo, strainmaps_path, folder_img), exist_ok=Tr
 
 ## ----------------------------------------------------------------
 
-# load strainmap to visualize
+# load strain map to visualize
 # Acronyms used in the following are:
 # * PE: plane of elevation
 # * SE: shoulder elevation
@@ -62,7 +62,7 @@ se_datapoints = np.array(np.arange(min_se, max_se, step))
 
 X,Y = np.meshgrid(pe_datapoints, se_datapoints, indexing='ij')
 
-# load the strainmaps from file (stores strains as functions of se, pe, ar coordinates)
+# load the strain maps from file (stores strains as functions of se, pe, ar coordinates)
 file = os.path.join(path_to_repo, strainmaps_path, file_name)
 strainmaps = np.load(file)                      # 3D strainmaps: [AR][PE][SE]
 
@@ -74,7 +74,7 @@ for ar_index in range(ar_len):
     figure_title = 'Axial rotation: {}'.format(min_ar + step * ar_index)
     figure_name = 'Axial_rot_{}.pdf'.format(min_ar + step * ar_index)
 
-    # plot strainmap in 2D and save the image to the new folder
+    # plot strain map in 2D and save the image to the new folder
     if save_2D:
         fig = plt.figure(ar_index)
         ax = fig.add_subplot()
@@ -91,7 +91,7 @@ for ar_index in range(ar_len):
         fig.savefig(os.path.join(path_to_repo, strainmaps_path, folder_img, figure_name))
         plt.close(fig)
 
-    # plot strainmap in 3D and visualize it for inspection
+    # plot strain map in 3D and visualize it for inspection
     if viz_3D:
         fig = plt.figure(ar_index)
         ax = fig.add_subplot(projection='3d')

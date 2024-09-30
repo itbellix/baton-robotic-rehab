@@ -1,6 +1,6 @@
 """
 This script allow to visualize the 4D strain maps along a different direction.
-The 4D strainmap carries information of the strain of a specific tendon of the rotator cuff
+The 4D strain map carries information of the strain of a specific tendon of the rotator cuff
 as a function of the axial rotation, plane of elevation, and shoulder elevation of the glenohumeral joint, 
 as well as muscle activation.
 For ease of visualization, we present the strain maps on a 2D plane (plane of elevation vs shoulder elevation).
@@ -44,7 +44,7 @@ file_name = muscle_of_interest + '_active.npy'
 
 strainmap_4d = np.load(os.path.join(path_to_repo, strainmaps_path, file_name))
 
-# The 4D strainmap carries information of the strain as a function of the axial rotation, plane of elevation, and
+# The 4D strain map carries information of the strain as a function of the axial rotation, plane of elevation, and
 # shoulder elevation of the glenohumeral joint, as well as muscle activation.
 # Acronyms used in the following are:
 # * PE: plane of elevation
@@ -81,7 +81,7 @@ ar_len = np.shape(np.arange(min_ar, max_ar, step_coord))[0]       # compute also
 # VISUALIZE the variation of tendon strain in 2D maps
 # Only plane of elevation and shoulder elevation will be shown
 # Values of axial rotation are increased gradually, once they are set the whole variation caused by muscle activation is shown
-frequency = 60 # update frequency in Hz, to update the portion of strainmap visualized
+frequency = 60 # update frequency in Hz, to update the portion of strain map visualized
 
 # find the maximum strain for the tendon, to scale the color in the map
 max_strain = np.max(np.max(strainmap_4d))

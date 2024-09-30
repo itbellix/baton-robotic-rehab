@@ -1,8 +1,8 @@
 """
-This script contains the musculoskeletal trajectory optimization module.
+This script contains the biomechanics-aware trajectory optimization module.
 It takes care of the interface to our KUKA LBR iiwa 7 robot (acting as a robotic physiotherapist),
 and implements a nonlinear programming problem (NLP) to find the trajectory that the robot needs to follow
-for minimizing rotator cuff strain in a subject. This is done by embedding a musculoskeletal model of the
+for minimizing rotator cuff strain in a subject. This is done by embedding a biomechanical model of the
 human shoulder (glenohumeral joint) in the optimization problem.
 
 OpenSim, OpenSimAD and CasADi are used to streamline the computations, and the output optimal trajectories
@@ -41,11 +41,11 @@ class TO_module:
         self.with_opensim = with_opensim            # flag to indicate whether OpenSim could be imported (used mostly for visualization)
         self.opensim_model = None                   # musculoskeletal model 
 
-        self.strainmap_current = None               # strainmap corresponding to the current model state
+        self.strainmap_current = None               # strain map corresponding to the current model state
 
-        self.strainmaps_params_dict = None          # Dictionary containing of all the precomputed (and interpolated) strainmaps. 
-                                                    # They are stored in memory as parameters of the corresponding gaussians and 
-                                                    # the correct set of parameters is selected at every time instant (and set to strainmap_current)
+        self.strainmaps_params_dict = None          # Dictionary containing of all the precomputed (and interpolated) strain maps. 
+                                                    # They are stored in memory as parameters of the corresponding Gaussians and 
+                                                    # the correct set of parameters is selected at every time instant (and set to strain map_current)
 
         self.state_space_names = None               # The names of the coordinates in the model that describe the state-space in which we move
                                                     # For the case of our shoulder rehabilitation, it will be ["plane_elev", "shoulder_elev", "axial_rot"]
@@ -60,7 +60,7 @@ class TO_module:
                                                     # this is an index 
         self.max_activation = 1                     # maximum activation considered (defaulted to 1)
         self.min_activation = 0                     # minimum activation considered (defaulted to 0)
-        self.delta_activation = 0.005               # resolution on the activation value that the strainmap captures
+        self.delta_activation = 0.005               # resolution on the activation value that the strain map captures
 
         self.x_opt = None                           # Optimal trajectory in shoulder state. It consists in a sequence of points (or a single point)
                                                     # that will be transformed in robot coordinates and tracked by the robot.
@@ -79,7 +79,6 @@ class TO_module:
         # robot-related variables to correct for inaccuracies in the estimation of the shoulder state
         self.current_ee_pose = None
 
-        # TODO: this is an alternative to the one above REMOVE THE LATTER IF THIS WORKS 
         # filter the reference that is generated, to avoid noise injection from the human-pose estimator
         self.last_cart_ee_cmd = np.zeros(3)     # store the last command sent to the robot (position)
         self.last_rotation_ee_cmd = np.zeros(3)     # store the last command sent to the robot (rotation)
@@ -126,7 +125,7 @@ class TO_module:
     def setOpenSimModel(self, path_to_model, model_name):
         """"
         This function is used to set the OpenSim model that will be considered in the 
-        strainmap-based optimization. It is used to define how the system state evolves
+        strain-map-based optimization. It is used to define how the system state evolves
         given user-provided inputs
         
         INPUTS: 
@@ -156,8 +155,8 @@ class TO_module:
 
     def setStrainMapsParamsDict(self, params_dict):
         """
-        This function is used to set the dictionary of strainmap parameters for later use.
-        Each strainmap is represented as a sum of 2D Gaussians (each having 6 parameters)
+        This function is used to set the dictionary of strain map parameters for later use.
+        Each strain map is represented as a sum of 2D Gaussian functions (each having 6 parameters)
         """
         self.strainmaps_params_dict = params_dict
 
@@ -172,7 +171,7 @@ class TO_module:
     def setActivationBounds(self, max_activation, min_activation, delta_activation):
         """
         This function allows to modify the default activation bounds considered in the trajectory optimization,
-        as well as the discretization that the strainmaps capture.
+        as well as the discretization that the strain maps capture.
         """
         self.max_activation = max_activation
         self.min_activation = min_activation
@@ -181,8 +180,8 @@ class TO_module:
 
     def setStrainMapCurrent(self, strainmap_params):
         """"
-        This function is used to manually update the strainmap that is being considered, based on user input.
-        It is useful just for debugging, then the update of the strainmaps should be done based on the 
+        This function is used to manually update the strain map that is being considered, based on user input.
+        It is useful just for debugging, then the update of the strain maps should be done based on the 
         state_values_current returned by sensor input (like the robotic encoder, or visual input)
         """
         self.strainmap_current = strainmap_params
@@ -191,8 +190,8 @@ class TO_module:
     def setActivationLevel(self, activation_level):
         """
         This function allows to set the activation level that is currently considered. This call only makes sense if
-        we are navigating strainmaps that are also a function of the activation of the muscles.
-        By setting a different activation level, the 2D strainmap that is navigated will change accordingly.
+        we are navigating strain maps that are also a function of the activation of the muscles.
+        By setting a different activation level, the 2D strain map that is navigated will change accordingly.
         """
         assert self.varying_activation is not False, "Setting the activation level will not work, the strains do not account for it"
         if self.varying_activation!="override":
@@ -203,10 +202,10 @@ class TO_module:
 
     def upsampleSolution(self, solution, N, T, target_freq):
         """
-        The function is dedicated to upsampling a given solution for the trajectory of the shoulder pose
+        The function is dedicated to up-sampling a given solution for the trajectory of the shoulder pose
         (consisting of N points over a time horizon of T seconds) to a target frequency required.
-        Note that only the generalized coordinates are upsampled, as we do not care about the velocities.
-        The interpolation is linear over the initial datapoints! Using SciPy, we could interpolate also in
+        Note that only the generalized coordinates are up-sampled, as we do not care about the velocities.
+        The interpolation is linear over the initial data points! Using SciPy, we could interpolate also in
         a different way.
         """
         required_points = int(np.ceil(target_freq*T))
@@ -380,13 +379,13 @@ class TO_module:
 
         self.current_ee_pose = np.array(data.data[-3:])   # update estimate of where the robot is now (last 3 elements)
 
-        # after receiving the values, check on which strainmap we are moving
+        # after receiving the values, check on which strain map we are moving
         # we need to approximate the value of the axial rotation for this.
-        self.strainmap_current = np.argmin(np.abs(self.nlps_module.ar_values - np.rad2deg(self.state_values_current[4])))   # index of the strainmap
+        self.strainmap_current = np.argmin(np.abs(self.nlps_module.ar_values - np.rad2deg(self.state_values_current[4])))   # index of the strain map
 
         rounded_ar = self.nlps_module.ar_values[self.strainmap_current] # rounded value of the axial rotation
 
-        # set the strainmap parameters in the NLP, based on the current state
+        # set the strain map parameters in the NLP, based on the current state
         if self.varying_activation is False:
             self.nlps_module.setParametersStrainMap(self.strainmaps_params_dict['num_gaussians'][self.strainmap_current], 
                                                     self.strainmaps_params_dict['all_params_gaussians'][self.strainmap_current],
@@ -398,7 +397,7 @@ class TO_module:
                                                     self.activation_level*self.delta_activation + self.min_activation)
             
         elif self.varying_activation=="override":
-            # here we hardcode some particular activation levels, to design meaningful strainmaps for the experiments
+            # here we hardcode some particular activation levels, to design meaningful strain maps for the experiments
             if self.activation_level == 180:
                 p1 = np.array([0, 0, 0, 1, 1, 0])
                 p2 = np.array([0, 0, 0, 1, 1, 0])
@@ -436,7 +435,7 @@ class TO_module:
                 params_gaussians = np.hstack((p1, p2, p3))
                 self.nlps_module.setParametersStrainMap(3, params_gaussians, rounded_ar, None)
         
-        # set up a logic that allows to start and update the visualization of the current strainmap at a given frequency
+        # set up a logic that allows to start and update the visualization of the current strain map at a given frequency
         # We set this fixed frequency to be 10 Hz
         if np.round(time_now-np.fix(time_now), 2) == np.round(time_now-np.fix(time_now),1):
             self.nlps_module.strain_visualizer.updateStrainMap(self.nlps_module.all_params_gaussians, 
@@ -495,7 +494,7 @@ class TO_module:
 
         initial_state = self.state_values_current + estimated_displacement                  # estimated shoulder pose
 
-        # if we are considering strain in our formulation, add the parameters of the strainmap to the numerical input
+        # if we are considering strain in our formulation, add the parameters of the strain map to the numerical input
         if self.nlps_module.num_gaussians>0:
             params_g1 = self.nlps_module.all_params_gaussians[0:6]
             params_g2 = self.nlps_module.all_params_gaussians[6:12]
@@ -661,7 +660,7 @@ class nlps_module():
     Class defining the nonlinear programming (NLP) problem to be solved at each iteration of the 
     trajectory optimization (TO) algorithm. It leverages CasADi and OpenSim to find the optimal 
     trajectory that the OpenSim model should follow in order to navigate the corresponding 
-    strain-space (defined by a given strain parameters, aka "strainmap"). 
+    strain-space (defined by a given strain parameters, aka "strain map"). 
 
     We call this a nlps_module (where the "s" stands for "strain")
     """
@@ -685,7 +684,7 @@ class nlps_module():
         self.u = None                   # CasADi variable representing the control vector to be applied to the system
                                         # In our case, they are forces to be applied to the human at their elbow
 
-        self.x_d = None                 # CasADi variable representing the desired final position on the strainmap
+        self.x_d = None                 # CasADi variable representing the desired final position on the strai nmap
 
         # Naming and ordering of states and controls
         self.state_names = None
@@ -696,8 +695,8 @@ class nlps_module():
         # Systems dynamics (as a CasADi function, or coming from the OpenSim model as a CasADi Callback)
         self.sys_dynamics = None
 
-        # Strainmap parameters
-        self.num_gaussians = 0          # the number of 2D Gaussians used to approximate the current strainmap
+        # strain map parameters
+        self.num_gaussians = 0          # the number of 2D Gaussians used to approximate the current strain map
         self.num_params_gaussian = 6    # number of parameters that each Gaussian is defined of (for a 2D Gaussian, we need 6)
         self.all_params_gaussians = []  # list containing the values of all the parameters defining all the Gaussians
                                         # For each Gaussian, we have: amplitude, x0, y0, sigma_x, sigma_y, offset
@@ -708,12 +707,12 @@ class nlps_module():
         self.ar_boundaries = [-90, 100] # as above, for the axial rotation [deg]
 
         self.strainmap_step = 4         # discretization step used along the model's coordinate [in degrees]
-                                        # By default we set it to 4, as the strainmaps are generated from the biomechanical model
+                                        # By default we set it to 4, as the strain maps are generated from the biomechanical model
                                         # with this grid accuracy
         
         self.ar_values = np.arange(self.ar_boundaries[0], self.ar_boundaries[1], self.strainmap_step)
         
-        # Strainmap parameters (for visualization)
+        # strain map parameters (for visualization)
         self.pe_datapoints = np.array(np.arange(self.pe_boundaries[0], self.pe_boundaries[1], self.strainmap_step))
         self.se_datapoints = np.array(np.arange(self.se_boundaries[0], self.se_boundaries[1], self.strainmap_step))
 
@@ -866,9 +865,9 @@ class nlps_module():
             
         if len(self.all_params_gaussians) == self.num_gaussians * 6:
             if len(self.all_params_gaussians)==0:
-                print("No (complete) information about strainmaps have been included \nThe NLP will not consider them")
+                print("No (complete) information about strain maps have been included \nThe NLP will not consider them")
         else:
-            RuntimeError("Unable to continue. The specified strainmaps are not correct. \
+            RuntimeError("Unable to continue. The specified strain maps are not correct. \
                          Check if the parameters provided are complete wrt the number of Gaussians specified. \
                          Note: we assume that 6 parameters per (2D) Gaussian are given")
             
@@ -881,7 +880,7 @@ class nlps_module():
         # the parameters collected here can be changed at runtime   
         self.params_list = []
 
-        # if this information is present, define the strainmap to navigate onto
+        # if this information is present, define the strain map to navigate onto
         if self.num_gaussians>0:
             # for now, let's assume that there will always be 3 Gaussians (if this is not true, consider
             # if it is better to have a fixed higher number or a variable one)
@@ -909,12 +908,12 @@ class nlps_module():
             # definition of the 3rd Gaussian (note that the state variables are normalized!)
             g3 = p_g3[0] * np.exp(-((self.x[0]/np.max(np.abs(self.pe_boundaries))-p_g3[1])**2/(2*p_g3[3]**2) + (self.x[2]/np.max(np.abs(self.se_boundaries))-p_g3[2])**2/(2*p_g3[4]**2))) + p_g3[5]
 
-            # definition of the symbolic cumulative strainmap
+            # definition of the symbolic cumulative strain map
             strainmap = g1 + g2 + g3
             # strainmap_sym = ca.Function('strainmap_sym', [self.x], [strainmap], {"allow_free":True})
             strainmap_sym = ca.Function('strainmap_sym', [self.x, p_g1, p_g2, p_g3], [strainmap])
 
-            # save the symbolic strainmap for some debugging (TODO: remove once things work)
+            # save the symbolic strain map for some debugging (TODO: remove once things work)
             self.strainmap_sym = strainmap_sym
 
         #  "Lift" initial conditions
@@ -975,11 +974,11 @@ class nlps_module():
             if self.num_gaussians>0:
                 # if so, add term related to current strain to the cost
                 # the strain is evaluated only at the knots of the optimization mesh
-                # (note that the strainmap is defined in degrees, so we convert our state to that)
+                # (note that the strain map is defined in degrees, so we convert our state to that)
                 J = J + self.gamma_strain * strainmap_sym(Xk*180/ca.pi, p_g1, p_g2, p_g3)
 
                 # record the strain level in the current state value
-                # (note that the strainmap is defined in degrees, so we convert our state to that)
+                # (note that the strain map is defined in degrees, so we convert our state to that)
                 strain_s.append(strainmap_sym(Xk*180/ca.pi, p_g1, p_g2, p_g3))
 
             # get interpolating points of collocation polynomial
@@ -1006,7 +1005,7 @@ class nlps_module():
 
         if self.num_gaussians>0:
             # record the strain level at the final step
-            # (note that the strainmap is defined in degrees, so we convert our state to that)
+            # (note that the strain map is defined in degrees, so we convert our state to that)
             strain_s.append(strainmap_sym(Xk*180/ca.pi, p_g1, p_g2, p_g3))
             self.strain_s = ca.vertcat(*strain_s)
 
@@ -1077,9 +1076,9 @@ class nlps_module():
             
         if len(self.all_params_gaussians) == self.num_gaussians * 6:
             if len(self.all_params_gaussians)==0:
-                print("No (complete) information about strainmaps have been included \nThe NLP will not consider them")
+                print("No (complete) information about strain maps have been included \nThe NLP will not consider them")
         else:
-            RuntimeError("Unable to continue. The specified strainmaps are not correct. \
+            RuntimeError("Unable to continue. The specified strain maps are not correct. \
                          Check if the parameters provided are complete wrt the number of Gaussians specified. \
                          Note: we assume that 6 parameters per (2D) Gaussian are given")
             
@@ -1092,7 +1091,7 @@ class nlps_module():
         # the parameters collected here can be changed at runtime   
         self.params_list = []
 
-        # if this information is present, define the strainmap to navigate onto
+        # if this information is present, define the strain map to navigate onto
         if self.num_gaussians>0:
             # for now, let's assume that there will always be 3 Gaussians (if this is not true, consider
             # if it is better to have a fixed higher number or a variable one)
@@ -1120,12 +1119,12 @@ class nlps_module():
             # definition of the 3rd Gaussian (note that the state variables are normalized!)
             g3 = p_g3[0] * np.exp(-((self.x[0]/np.max(np.abs(self.pe_boundaries))-p_g3[1])**2/(2*p_g3[3]**2) + (self.x[2]/np.max(np.abs(self.se_boundaries))-p_g3[2])**2/(2*p_g3[4]**2))) + p_g3[5]
 
-            # definition of the symbolic cumulative strainmap
+            # definition of the symbolic cumulative strain map
             strainmap = g1 + g2 + g3
             # strainmap_sym = ca.Function('strainmap_sym', [self.x], [strainmap], {"allow_free":True})
             strainmap_sym = ca.Function('strainmap_sym', [self.x, p_g1, p_g2, p_g3], [strainmap])
 
-            # save the symbolic strainmap for some debugging (TODO: remove once things work)
+            # save the symbolic strain map for some debugging (TODO: remove once things work)
             self.strainmap_sym = strainmap_sym
 
         #  "Lift" initial conditions
@@ -1185,11 +1184,11 @@ class nlps_module():
             if self.num_gaussians>0:
                 # if so, add term related to current strain to the cost
                 # the strain is evaluated only at the knots of the optimization mesh
-                # (note that the strainmap is defined in degrees, so we convert our state to that)
+                # (note that the strain map is defined in degrees, so we convert our state to that)
                 J = J + self.gamma_strain * strainmap_sym(Xk*180/ca.pi, p_g1, p_g2, p_g3)
 
                 # record the strain level in the current state value
-                # (note that the strainmap is defined in degrees, so we convert our state to that)
+                # (note that the strain map is defined in degrees, so we convert our state to that)
                 strain_s.append(strainmap_sym(Xk*180/ca.pi, p_g1, p_g2, p_g3))
 
             # get interpolating points of collocation polynomial
@@ -1216,7 +1215,7 @@ class nlps_module():
 
         if self.num_gaussians>0:
             # record the strain level at the final step
-            # (note that the strainmap is defined in degrees, so we convert our state to that)
+            # (note that the strain map is defined in degrees, so we convert our state to that)
             strain_s.append(strainmap_sym(Xk*180/ca.pi, p_g1, p_g2, p_g3))
             self.strain_s = ca.vertcat(*strain_s)
 
@@ -1402,13 +1401,13 @@ class nlps_module():
 
     def visualizeCurrentStrainMap(self, threeD = False, block = False):
         """
-        Call this function to display the strainmap currently considered by the NLPS.
+        Call this function to display the strain map currently considered by the NLPS.
         Select whether you want to visualize it in 3D or not.
         """
-        # inizialize empty strainmap
+        # inizialize empty strain map
         current_strainmap = np.zeros(self.X_norm.shape)
 
-        # loop through all of the Gaussians, and obtain the strainmap values
+        # loop through all of the Gaussians, and obtain the strain map values
         for function in range(len(self.all_params_gaussians)//self.num_params_gaussian):
 
             #first, retrieve explicitly the parameters of the function considered in this iteration
@@ -1419,10 +1418,10 @@ class nlps_module():
             sigma_y = self.all_params_gaussians[function*self.num_params_gaussian+4]
             offset = self.all_params_gaussians[function*self.num_params_gaussian+5]
             
-            # then, compute the contribution of this particular Gaussian to the final strainmap
+            # then, compute the contribution of this particular Gaussian to the final strain map
             current_strainmap += amplitude * np.exp(-((self.X_norm-x0)**2/(2*sigma_x**2)+(self.Y_norm-y0)**2/(2*sigma_y**2)))+offset
             
-        # finally, plot the resulting current strainmap
+        # finally, plot the resulting current strain map
         if threeD:
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
@@ -1445,9 +1444,9 @@ class nlps_module():
     def visualize2DTrajectoryOnCurrentStrainMap(self, trajectory_2d, strains, threeD):
         """
         This function allows to plot a given trajectory (in the plane of elevation-shoulder elevation space)
-        on the strainmap that is currently considered. The inputs are:
+        on the strain map that is currently considered. The inputs are:
         - trajectory_2d: sequence of (pe, se) values defining the trajectory in shoulder space [in radians]
-                         Note: axial rotation is not considered since it is fixed on a given strainmap.
+                         Note: axial rotation is not considered since it is fixed on a given strain map.
         - strains: sequence of the strains associated to each point in the trajectory.
         - threeD: whether you want to visualize it in 3D or not.
 
@@ -1460,10 +1459,10 @@ class nlps_module():
         assert trajectory_2d.shape[0] == 2, "The given trajectory must be 2-dimensional \
                                              (points must be [plane of elevation, shoulder elevation])"
         
-        # inizialize empty strainmap
+        # inizialize empty strain map
         current_strainmap = np.zeros(self.X_norm.shape)
 
-        # loop through all of the Gaussians, and obtain the strainmap values
+        # loop through all of the Gaussians, and obtain the strain map values
         for function in range(len(self.all_params_gaussians)//self.num_params_gaussian):
 
             #first, retrieve explicitly the parameters of the function considered in this iteration
@@ -1474,10 +1473,10 @@ class nlps_module():
             sigma_y = self.all_params_gaussians[function*self.num_params_gaussian+4]
             offset = self.all_params_gaussians[function*self.num_params_gaussian+5]
             
-            # then, compute the contribution of this particular Gaussian to the final strainmap
+            # then, compute the contribution of this particular Gaussian to the final strain map
             current_strainmap += amplitude * np.exp(-((self.X_norm-x0)**2/(2*sigma_x**2)+(self.Y_norm-y0)**2/(2*sigma_y**2)))+offset
             
-        # finally, plot the resulting current strainmap together with the trajectory (and its associated strain)
+        # finally, plot the resulting current strain map together with the trajectory (and its associated strain)
         strain_at_the_goal = self.strainmap_sym(self.goal*180/np.pi, self.all_params_gaussians[0:6], self.all_params_gaussians[6:12], self.all_params_gaussians[12:18])
         
         if threeD:
@@ -1539,7 +1538,7 @@ class nlps_module():
 
     def setParametersStrainMap(self, num_gaussians, all_params_gaussians, rounded_axial_rotation, act_current = None):
         """
-        Utility to set the parameters defining the strainmap that is considered by the NLP.
+        Utility to set the parameters defining the strain map that is considered by the NLP.
         """
         self.num_gaussians = num_gaussians
         self.all_params_gaussians = all_params_gaussians
@@ -1559,7 +1558,7 @@ class nlps_module():
 
 class RealTimeStrainMapVisualizer:
     """
-    This class is built to have a way to visualize the 2D strainmaps and update them in real-time
+    This class is built to have a way to visualize the 2D strain maps and update them in real-time
     """
     def __init__(self, X_norm, Y_norm, num_params_gaussian, pe_boundaries, se_boundaries):
         """
@@ -1568,13 +1567,13 @@ class RealTimeStrainMapVisualizer:
         self.X_norm = X_norm
         self.Y_norm = Y_norm
         self.num_params_gaussian = num_params_gaussian
-        self.ar_current = None          # current (rounded) value of the axial rotation, associated to the strainmap
+        self.ar_current = None          # current (rounded) value of the axial rotation, associated to the strain map
         self.pe_boundaries = pe_boundaries
         self.se_boundaries = se_boundaries
 
         self.act_current = None         # current (rounded) value of the activation
 
-        # create a surface to hold the image of the strainmap
+        # create a surface to hold the image of the strain map
         self.image_surface = pygame.Surface(np.shape(X_norm))
 
         # define the bound values for the strain
@@ -1648,7 +1647,7 @@ class RealTimeStrainMapVisualizer:
         # we then use this information to map the point on the actual screen, as we know the screen size
         # mind that the origin of the screen is in the top left corner, with X from left to right, and Y downwards
         pe_on_screen = pe_scale_factor * self.widow_dimensions[0]
-        se_on_screen = (1-se_scale_factor) * self.widow_dimensions[1]   # note the correction, as the strainmap has SE positive
+        se_on_screen = (1-se_scale_factor) * self.widow_dimensions[1]   # note the correction, as the strain map has SE positive
                                                                         # upwards. So we flip the position wrt the Y axis
         
         # return the re-projected point
@@ -1697,11 +1696,11 @@ class RealTimeStrainMapVisualizer:
 
     def updateStrainMap(self, list_params, pose_current = None, trajectory_current = None, goal_current = None, vel_current = None):
         """
-        This function allows to update the strainmap.
+        This function allows to update the strain map.
         Inputs:
         * list_params: contains the list of parameters that define the gaussians
                        that need to be plotted.
-        * pose_current: the current estimated pose on the strainmap
+        * pose_current: the current estimated pose on the strain map
         * trajectory current: the current optimal trajectory (as points)
         TODO: we could also add capability to plot what was considered optimal at the previous time
         step, and the position where the optimization started?
@@ -1749,7 +1748,7 @@ class RealTimeStrainMapVisualizer:
         act_label = self.font_title_pygame.render(f'Muscle activation:{self.act_current}', True, self.color_lines)
         self.screen.blit(act_label, (self.widow_dimensions[0]-200, 40))
 
-        # if given, display the current 2D pose on the strainmap (plane of elevation, shoulder elevation)
+        # if given, display the current 2D pose on the strain map (plane of elevation, shoulder elevation)
         if pose_current is not None:
             marker_radius = 5      # define the radius of the marker for the current pose
             pygame.draw.circle(self.screen, (255, 0, 0), self.remapPointOnScreen(np.rad2deg(pose_current)), marker_radius)
@@ -1768,7 +1767,7 @@ class RealTimeStrainMapVisualizer:
             for index in range(np.shape(trajectory_current)[1]):
                 pygame.draw.circle(self.screen, (0, 0, 255), self.remapPointOnScreen(np.rad2deg(trajectory_current[:,index])), traj_point_radius)
 
-        # visualize also the goal on the current strainmap (if it has been set)
+        # visualize also the goal on the current strain map (if it has been set)
         if goal_current is not None:
             goal_radius = 5
             pygame.draw.circle(self.screen, (0, 255, 0), self.remapPointOnScreen(np.rad2deg(goal_current)), goal_radius)
