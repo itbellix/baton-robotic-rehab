@@ -105,9 +105,6 @@ def main():
     path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags')
     bag_file_name = '2024-02-14-11-44-15.bag'
 
-    # analyzer = bagAnalyzer(os.path.join(path_to_bag, bag_file_name))
-    # analyzer.check_bag(0)
-
     rospy.init_node('marker_publisher_node', anonymous=True)
 
     rate = rospy.Rate(10)

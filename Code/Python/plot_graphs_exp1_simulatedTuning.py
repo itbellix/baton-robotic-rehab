@@ -8,7 +8,6 @@ experiment_parameters.py. This is referred to as experiment 3 in experiment_para
 """
 
 import os
-from bagAnalyzer import *
 import pickle
 from spatialmath import SO3
 

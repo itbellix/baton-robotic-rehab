@@ -4,7 +4,6 @@ The plots produced here are used in Fig.5 and Fig.6 of the paper.
 """
 
 import os
-from bagAnalyzer import *
 import pickle
 from spatialmath import SO3
 
@@ -70,9 +69,6 @@ def main():
 
     # load the strainmap dictionary used in the experiment
     file_strainmaps = '/home/itbellix/Desktop/GitHub/PTbot_official/Personal_Results/Strains/Passive/AllMuscles/params_strainmaps_num_Gauss_3/params_strainmaps_num_Gauss_3.pkl' 
-
-    analyzer = bagAnalyzer(os.path.join(path_to_bag, bag_file_name))
-    # analyzer.list_topics_bag(0)
     
     # instantiate variables (they will be Mx4 matrices, where M is variable -number of data- and the last column is the timestamp)
     estimated_shoulder_state = None
