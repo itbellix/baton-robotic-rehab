@@ -1,7 +1,7 @@
 # BATON: Biomechanics-Aware Trajectory Optimization for Navigation during robotic physiotherapy
 BATON is a novel method for planning biomechanics-aware robotic rehabilitation trajectories for rotator cuff therapy. It embeds a human musculoskeletal model into the robotic controller to plan trajectories that achieve a desired final human pose while minimizing strain in selected tendons and accounting for the dynamics of the human arm with which the robot interacts.
 
-<img src="Media/visual_abstract_1.svg" height="300" />
+<img src="Media/visual_abstract.png" height="300" />
 
 Our approach is presented in detail in:
 
@@ -48,7 +48,8 @@ We exploit a customized version of OpenSimAD that allows us to retrieve a differ
 
 ## Requirements
 In order to run `BATON` you will need:
-- an OpenSimAD Conda environment to run the biomechanics-aware optimizations. This can be set up following the instructions at https://github.com/antoinefalisse/opensimAD
+- an OpenSimAD Conda environment to run the biomechanics-aware optimizations. This can be set up following the instructions at https://github.com/antoinefalisse/opensimAD;
+- a ROS distribution (we tested our code with [ROS Noetic](http://wiki.ros.org/noetic));
 - a working version of our `iiwa-ros` repository, implementing the impedance controller for the KUKA LBR iiwa collaborative robotic arm that we used in our experiments. Please refer to https://gitlab.tudelft.nl/kuka-iiwa-7-cor-lab/iiwa_ros for obtaining and building it correctly. Note that this repository has quite a few dependency, so make sure to follow the [instalation instructions](https://gitlab.tudelft.nl/kuka-iiwa-7-cor-lab/iiwa_ros/-/blob/main/README.md).
 
 ## Structure
@@ -63,7 +64,23 @@ Further explanations are provided inside each folder.
 
 
 ## Brief guide to our code
+In order to run our code, you will need 3 different terminals (let's call them _terminal-1_, _terminal-2_ and _terminal-3_). On all of them, navigate to your local version of this repository, and source your ROS distribution, and the `iiwa-ros` (as `$ $PATH-to-iiwa$/iiwa_ros/devel/setup.bash`). Then, assuming that you are running things in simulation:
+- on _terminal-1_: run `roslaunch Code/launch/controller.launch simulation:=true`
+- on _terminal-2_: run `python Code/Python/robot_control.py --simulation=true`
+on _terminal-2_: 
+  1. activate the OpenSimAD Conda environment
+  2. run `python Code/Python/TO_main.py --simulation=true`
 
+If everything was installed correctly, you will see the Gazebo environment with the Kuka robot, and you should be prompted with a selection menu as below:
+
+<img src="Media/selection_menu.png" height="150" />
+
+Then, you can input `a` so that the robot moves to the starting position for the therapy.
+Once the position has been reached, you will see a strain map being brought up on the screen, and you will be able to input `s` so that the simulated experiment can start. By default, experiment 1 will be executed (where we assume position-dependent strains in the rotator cuff tendons).
+
+Overall, the windows that you will see should look like, displaying the generation of rehabilitation trajectories that minimize the strain on the rotator cuff tendons:
+
+<img src="Media/display_baton_sim.png" height="200" />
 
 ### Trouble-shooting
 If you encounter any troubles or issues with running the code contained in this repository, feel free to open an issue and report it. We will do our best to help you!
