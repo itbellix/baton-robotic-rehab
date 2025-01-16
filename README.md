@@ -6,10 +6,11 @@ BATON is a novel method for planning biomechanics-aware robotic rehabilitation t
 Our approach is presented in detail in:
 
 ```bib
-@article{baton,
+@article{belli2024biomechanics,
   title={Biomechanics-Aware Trajectory Optimization for Navigation during Robotic Physiotherapy},
   author={Belli, Italo and Prendergast, J Micah and Seth, Ajay and Peternel, Luka},
-  journal={XX},
+  journal={arXiv preprint arXiv:2411.03873},
+  year={2024}
 }
 ```
 
