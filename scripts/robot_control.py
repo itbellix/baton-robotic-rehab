@@ -1,12 +1,6 @@
 """
 Script to control the KUKA LBR iiwa both in simulation and in the lab.
-It builds on top of the iiwa-ros repository, available at https://gitlab.tudelft.nl/kuka-iiwa-7-cor-lab/iiwa_ros
-
-To run this code, first source your ROS distribution (tested with Noetic), then source the iiwa-ros package,
-in two different terminals. On the first terminal, launch ROS and the Gazebo environment with controller.launch
-(located in this repository, under Code/launch/). Then, run this script in the second terminal. You will be prompted
-with an interface to interact with the robot. For some tasks (like approaching the position to begin therapy),
-TO_main.py should also be started in another terminal.
+It builds on top of the iiwa_impedance_control repository, available at https://gitlab.tudelft.nl/nickymol/iiwa_impedance_control/
 
 Example usage: $ python robot_control --simulation=true
 """
