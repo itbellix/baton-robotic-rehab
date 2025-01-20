@@ -18,7 +18,7 @@ experiment = 1      # 1: Passive human subject (strain map is only position-depe
 
 # define the required paths
 code_path = os.path.dirname(os.path.realpath(__file__))     # getting path to where this script resides
-path_to_repo = os.path.join(code_path, '..', '..')          # getting path to the repository
+path_to_repo = os.path.join(code_path, '..')                # getting path to the repository
 
 # set the frequency to check for new message and execute loops
 loop_frequency = 20    # [Hz]
