@@ -1,0 +1,9 @@
+# python virtual environment
+venv_baton/*
+
+# OpenSim log file
+opensim.log
+
+
+# VS code related stuff
+.vscode/*
