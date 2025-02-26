@@ -14,10 +14,11 @@ import actionlib
 from controller_manager_msgs.srv import SwitchController
 
 # Messages to and from KUKA robot
-from iiwa_impedance_control.msg import PoseTwistStamped, CartesianTrajectoryExecutionAction, CartesianTrajectoryExecutionGoal, \
+from iiwa_impedance_control.msg import CartesianTrajectoryExecutionAction, CartesianTrajectoryExecutionGoal, \
                                 JointTrajectoryExecutionAction, JointTrajectoryExecutionGoal, JointTrajectoryExecutionActionResult
 
 from std_msgs.msg import Float64MultiArray, Bool, Float32MultiArray
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from spatialmath import SE3
 
 # import scipy to deal with rotation matrices
@@ -47,10 +48,6 @@ class RobotControlModule:
         * experimental_params: parameters that are dependent on the experimental setup 
                                (such as arm length, orientation wrt the robot, etc...)
         """
-        # get the name of the robot that we are working with
-        # TODO: this is not needed anymore with the new controller?
-        # self.ns = rospy.get_param('/namespaces')
-
         # Action clients
         self.cartesian_action_client = actionlib.SimpleActionClient('/CartesianImpedanceController/cartesian_trajectory_execution_action', CartesianTrajectoryExecutionAction)
         self.joint_action_client = actionlib.SimpleActionClient('/JointImpedanceController/joint_trajectory_execution_action', JointTrajectoryExecutionAction)
@@ -105,10 +102,15 @@ class RobotControlModule:
 
         # define a ROS subscriber to have access to the cartesian pose of the EE if needed
         # TODO: modify topic with /CartesianImpedanceController/cartesian_pose, which is of type Pose Stamped
-        self.sub_to_cartesian_pose = rospy.Subscriber('/CartesianImpedanceController/cartesian_pose_twist',   # name of the topic to subscribe to
-                                                      PoseTwistStamped,                                 # type of ROS message to receive
+        self.sub_to_cartesian_pose = rospy.Subscriber('/CartesianImpedanceController/cartesian_pose',   # name of the topic to subscribe to
+                                                      PoseStamped,                                      # type of ROS message to receive
                                                       self._callback_ee_pose,                           # callback
                                                       queue_size=1)
+        
+        self.sub_to_cartesian_twist = rospy.Subscriber('/CartesianImpedanceController/cartesian_twist',
+                                                        TwistStamped,
+                                                        self._callback_ee_twist,
+                                                        queue_size=1)
         
         # define a ROS publisher to convert current cartesian pose into shoulder pose
         self.topic_shoulder_pose= shared_ros_topics['estimated_shoulder_pose']
@@ -117,7 +119,7 @@ class RobotControlModule:
         # define a ROS subscriber to receive the commanded (optimal) trajectory for the EE, from the
         # biomechanical-based optimization
         # TODO: figure out how to do this with Nicky's repo (part of commanding given reference is unclear for me)
-        self.topic_optimal_pose_ee = '/CartesianImpedanceController/reference_cartesian_pose'
+        self.topic_optimal_pose_ee = shared_ros_topics['optimal_cartesian_ref_ee']
         self.sub_to_optimal_pose_ee = rospy.Subscriber(self.topic_optimal_pose_ee, 
                                                        Float64MultiArray,
                                                        self._callback_ee_optimal_pose,
@@ -155,6 +157,16 @@ class RobotControlModule:
         self.topic_rmr = '/kukadat'
         self.pub_rmr_data = rospy.Publisher(self.topic_rmr, Float32MultiArray, queue_size = 1)
 
+
+    def _callback_ee_twist(self,data):
+        """
+        This callback is dedicated to listening to the current twist of the end effector.
+        Internal parameters of the module are updated accordingly (v and omega in robot's base frame).
+        """
+        self.ee_twist_curr = np.array([data.twist.linear.x, data.twist.linear.y, data.twist.linear.z,
+                                       data.twist.angular.x, data.twist.angular.y, data.twist.angular.z])
+
+
     def _callback_ee_pose(self,data):
         """
         This callback is linked to the ROS subscriber that listens to the topic where the cartesian pose and twist of the EE is published.
@@ -169,10 +181,10 @@ class RobotControlModule:
         homogeneous_matrix[0:3, 0:3] = R.from_quat(orientation_quat).as_matrix()
         homogeneous_matrix[0:3, 3] = cart_pose_ee
         self.ee_pose_curr = SE3(homogeneous_matrix)   # value for the homogenous matrix describing ee pose
-        self.ee_twist_curr = np.array([data.twist.linear.x, data.twist.linear.y, data.twist.linear.z,
-                                       data.twist.angular.x, data.twist.angular.y, data.twist.angular.z]) # value for the twist (v and omega, in base frame)
-        # check if the robot has already reached its desired pose (if so, publish shoulder poses too)
-        if self.initial_pose_reached:
+        
+        # check if the robot has already reached its desired pose (if so, publish shoulder poses too) 
+        # and if at least one twist message has been received
+        if self.initial_pose_reached and self.ee_twist_curr is not None:
             R_ee = self.ee_pose_curr.R    # retrieve the rotation matrix defining orientation of EE frame
             sh_R_elb = np.transpose(experimental_params['base_R_shoulder'].as_matrix())@R_ee@np.transpose(experimental_params['elb_R_ee'].as_matrix())
 
@@ -452,6 +464,11 @@ class RobotControlModule:
         self.pub_request_reference.publish(self.requesting_reference)
 
 
+    def cartesian_trajectory_done_callback(self, status, result):
+        rospy.loginfo('Cartesian Trajectory Done callback. Result: ' + str(result), "debug")
+        self.desired_pose_reached = True if result.success else False
+
+
     def test_publish_cartesian(self, reference, time_movement, stiffness, damping = None, nullspace_gain = np.zeros(7), nullspace_reference = np.zeros(7)):
         """
         This is a testing utility to publish a given reference to the robot.
@@ -598,33 +615,6 @@ if __name__ == "__main__":
 
         rospy.loginfo("control module instantiated")
 
-        # set the robot in the homing pose, to always start from there
-        # the homing position is defined in joint state, so we switch to the JointImpedanceController for this
-        rospy.loginfo("Initiating homing")
-        try:
-            control_module.controller_manager(start_controllers=['/JointImpedanceController'],
-                                                  stop_controllers=['/CartesianImpedanceController'], strictness=1,
-                                                  start_asap=True, timeout=0.0)
-        except:
-            rospy.exceptions.ROSException("Failed switching controllers from Cartesian to Joint")
-        
-        goal = JointTrajectoryExecutionGoal()                   # instantiating the goal for the movement
-        goal.joint_positions_goal.data = np.zeros((7,1))        # in radians
-        goal.joint_velocities_goal.data = 0.2 * np.ones((7,1))  # in radians/s
-        control_module.joint_action_client.send_goal(goal)      # sending the goal
-        control_module.joint_action_client.wait_for_result()
-
-        rospy.sleep(5)
-
-        # after homing has been performed, we switch back to the CartesianImpedanceController
-        try:
-            control_module.controller_manager(start_controllers=['/CartesianImpedanceController'],
-                                                  stop_controllers=['/JointImpedanceController'], strictness=1,
-                                                  start_asap=True, timeout=0.0)
-        except:
-            rospy.exceptions.ROSException("Failed switching controllers from Joint to Cartesian")
-        rospy.loginfo("Completed homing")
-
         while not rospy.is_shutdown() and ongoing_therapy:
             # state machine to allow for easier interface
             # it checks if there is a user input, and set parameters accordingly
@@ -640,18 +630,62 @@ if __name__ == "__main__":
                         print("waiting for initial pose to be known")
                         while control_module.getEEDesiredPose() is None:
                             ros_rate.sleep()
-                    
-                    duration_movement = 20/rt_factor           # duration of the approach to the initial pose [s]
-                    rate = 20                                   # num. of via-points per second 
-                                                                # (from interpolation between current state and desired pose)
-                    precision = 1e-2                            # precision required for reaching the goal [m]
-                    stiffness = np.array([300, 300, 300, 10, 10, 2])
-                    # stiffness = np.array([200, 200, 200, 15, 15, 2])    # low stiffness (issue #162)
-                    # stiffness = np.array([350, 350, 350, 45, 45, 10])   # high stiffness (issue #162)
-                    damping = 2*np.sqrt(stiffness)             # decrease damping to increase stability
 
-                    print("moving to initial position")
-                    control_module.moveToEEDesiredPose(duration_movement, rate, precision, stiffness, damping)
+                    # control_module.cartesian_action_client.send_goal()
+                    
+                    # duration_movement = 20/rt_factor            # duration of the approach to the initial pose [s]
+                    # rate = 20                                   # num. of via-points per second 
+                    #                                             # (from interpolation between current state and desired pose)
+                    # precision = 1e-2                            # precision required for reaching the goal [m]
+                    # stiffness = np.array([300, 300, 300, 10, 10, 2])
+                    # # stiffness = np.array([200, 200, 200, 15, 15, 2])    # low stiffness (issue #162)
+                    # # stiffness = np.array([350, 350, 350, 45, 45, 10])   # high stiffness (issue #162)
+                    # damping = 2*np.sqrt(stiffness)             # decrease damping to increase stability
+
+                    # print("moving to initial position")
+                    # control_module.moveToEEDesiredPose(duration_movement, rate, precision, stiffness, damping)
+
+                    # the retrieved goal is a homogenous matrix representing the desired pose for the robot's end-effector
+                    homogenous_matrix_goal = control_module.getEEDesiredPose()
+                    quat_orientation_goal = R.from_matrix(homogenous_matrix_goal[0:3, 0:3]).as_quat()   # x, y, z, w order
+
+                    # homogenous_matrix_start = control_module.ee_pose_curr
+                    # quat_orientation_start = R.from_matrix(homogenous_matrix_start[0:3, 0:3]).as_quat()
+
+                    # build the goal to send to the controller
+                    goal = CartesianTrajectoryExecutionGoal()
+                    goal_pose_msg = PoseStamped()
+                    goal_pose_msg.header.seq = 0
+                    goal_pose_msg.header.stamp = rospy.Time.now()
+                    goal_pose_msg.pose.position.x = homogenous_matrix_goal[0,3]
+                    goal_pose_msg.pose.position.y = homogenous_matrix_goal[1,3]
+                    goal_pose_msg.pose.position.z = homogenous_matrix_goal[2,3]
+
+                    goal_pose_msg.pose.orientation.x = quat_orientation_goal[0]
+                    goal_pose_msg.pose.orientation.y = quat_orientation_goal[1]
+                    goal_pose_msg.pose.orientation.z = quat_orientation_goal[2]
+                    goal_pose_msg.pose.orientation.w = quat_orientation_goal[3]
+
+                    start_pose_msg = PoseStamped()
+                    start_pose_msg.header.seq = 0
+                    start_pose_msg.header.stamp = rospy.Time.now()
+                    start_pose_msg.pose.position.x = 99
+                    start_pose_msg.pose.position.y = 99
+                    start_pose_msg.pose.position.z = 99
+
+                    start_pose_msg.pose.orientation.x = 99
+                    start_pose_msg.pose.orientation.y = 99
+                    start_pose_msg.pose.orientation.z = 99
+                    start_pose_msg.pose.orientation.w = 99
+
+                    goal.pose_goal = goal_pose_msg
+                    goal.pose_start = start_pose_msg
+                    goal.translational_velocity_goal = 0.1
+                    goal.rotational_velocity_goal = 0.1
+                    control_module.cartesian_action_client.send_goal(goal, control_module.cartesian_trajectory_done_callback)
+
+                    while control_module.desired_pose_reached is False:
+                        rospy.sleep(0.1)
 
                     if control_module.desired_pose_reached:
                         # add nullspace control on robot's elbow
