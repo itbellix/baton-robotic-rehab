@@ -6,3 +6,6 @@ scipy==1.10.1
 spatialmath_python==1.1.9
 pyserial==3.5
 crc==7.1.0
+rospkg==1.6.0
+roboticstoolbox-python==1.1.1
+
