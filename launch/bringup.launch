@@ -29,7 +29,7 @@
     <arg name="model" default="14"/>
 
     <!-- Select the controller -->
-    <arg name="controller" default="CartesianImpedanceController"/>
+    <arg name="controller" default="JointImpedanceController"/>
 
     <!-- Setup iiwa -->
     <!-- Select the hardware interface -->
@@ -48,11 +48,7 @@
          name="hardware_interface" value="EffortJointInterface"/>
 
     <!-- Upload iiwa URDF -->
-    <include unless="$(arg dremel)" file="$(find iiwa_description)/launch/iiwa$(arg model)_upload.launch">
-        <arg name="hardware_interface" value="$(arg hardware_interface)"/>
-        <arg name="robot_name" value="$(arg robot_name)"/>
-    </include>
-    <include if="$(arg dremel)" file="$(find iiwa_dremel_description)/launch/iiwa$(arg model)_dremel_upload.launch">
+    <include file="$(find iiwa_description)/launch/iiwa$(arg model)_upload.launch">
         <arg name="hardware_interface" value="$(arg hardware_interface)"/>
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>
