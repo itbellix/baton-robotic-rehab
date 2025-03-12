@@ -7,3 +7,8 @@ opensim.log
 
 # VS code related stuff
 .vscode/*
+
+# other files
+__pycache__/
+*.pyc
+*.log
