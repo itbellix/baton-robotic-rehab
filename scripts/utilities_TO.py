@@ -455,6 +455,7 @@ class TO_module:
         to receive new, optimized references or not.
         """
         self.flag_run_optimization = data.data
+        self.flag_pub_trajectory = data.data
 
     
     def keepOptimizing(self):
