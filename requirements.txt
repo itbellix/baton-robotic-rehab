@@ -9,3 +9,4 @@ spatialmath_python==1.1.14
 pyserial==3.5
 rospkg==1.6.0
 roboticstoolbox-python==1.1.1
+crc==7.1.0      # for BotaSense One Force Torque sensor
