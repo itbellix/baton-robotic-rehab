@@ -28,11 +28,13 @@ from geometry_msgs.msg import PoseStamped
 
 from experiment_parameters import *     # this contains the experimental_params and the shared_ros_topics
 
+from botasensone import BotaSerialSensor, Config, Reading
+
 class TO_module:
     """
     Trajectory Optimization module.
     """
-    def __init__(self, nlps, shared_ros_topics, rate=200, with_opensim = False, simulation = 'true', speed_estimate:Bool=False):
+    def __init__(self, nlps, shared_ros_topics, rate=200, with_opensim = False, simulation = 'true', speed_estimate:Bool=False, ft_sensor=None):
         """"
         The TO_module requires a NLP object when instantiated
         """
@@ -123,6 +125,16 @@ class TO_module:
         self.sub_run_optimization = rospy.Subscriber(shared_ros_topics['request_reference'], Bool, self._flag_run_optimization_cb, queue_size=1)
 
         self.time_begin_optimizing = None           # store the time at which the optimization request begins
+
+        # Force-Torque sensor
+        self.ft_sensor = ft_sensor                       # object to handle the force-torque sensor
+
+        if self.ft_sensor is not None:
+            if isinstance(self.ft_sensor, BotaSerialSensor):
+                self.ft_sensor.start()                       # start the sensor
+
+            else:
+                RuntimeError("The force-torque sensor object is not of the correct type")
 
     def setOpenSimModel(self, path_to_model, model_name):
         """"

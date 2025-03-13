@@ -29,6 +29,8 @@ import utilities_casadi as utils_ca
 from scipy.spatial.transform import Rotation as R
 import pickle
 
+from botasensone import BotaSerialSensor
+
 # import parser
 import argparse
 
@@ -127,6 +129,9 @@ if __name__ == '__main__':
         # instantiate NLP problem
         nlps_module = utils_TO.nlps_module()
 
+        # instantiate the force/torque sensor object
+        sensor = BotaSerialSensor(experimental_params['ft_sensor_port'])
+
         # instantiate trajectory optimization module, given the NLP problem, 
         # the shared ros topics (defined in experiment_parameters.py), and setting debugging options
         to_module = utils_TO.TO_module(nlps = nlps_module, 
@@ -134,7 +139,8 @@ if __name__ == '__main__':
                                     rate = loop_frequency, 
                                     with_opensim = with_opensim,
                                     simulation = simulation,
-                                    speed_estimate = speed_estimate)
+                                    speed_estimate = speed_estimate,
+                                    ft_sensor=sensor)
 
         # set the OpenSim model representing the subject
         to_module.setOpenSimModel(path_to_model=path_to_model, model_name=model_name_osim)

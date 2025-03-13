@@ -7,6 +7,11 @@ import serial
 from crc import Calculator, Configuration
 import numpy as np
 
+import rospy
+from std_msgs.msg import Float32MultiArray
+
+from experiment_parameters import *
+
 
 class Config(NamedTuple):
     baud_rate: int
@@ -24,9 +29,9 @@ class Config(NamedTuple):
     def default():
         return Config(
             baud_rate=460800,
-            sinc_length=512,
-            chop_enable=0,
-            fast_enable=0,
+            sinc_length=57,
+            chop_enable=1,
+            fast_enable=1,
             fir_disable=1,
             temp_compensation=0,
             use_calibration=1,
@@ -85,27 +90,31 @@ class BotaSerialSensor:
         self._ser.baudrate = config.baud_rate
         self._ser.port = port
         self._ser.timeout = 10
+        self.reading_pub = rospy.Publisher(shared_ros_topics['ft_sensor_data'], Float32MultiArray, queue_size=10)
+        self.reading_message = Float32MultiArray()
+        self.reading_message.data = np.zeros(8)
+        self.reading_message.layout.data_offset = 0
 
         try:
             self._ser.open()
-            print("Opened serial port {}".format(port))
+            rospy.loginfo("[BotaSenseOne]Opened serial port {}".format(port))
         except:
-            raise Exception("Could not open port")
+            raise Exception("[BotaSenseOne]Could not open port")
 
         if not self._ser.is_open:
-            raise Exception("Could not open port")
+            raise Exception("[BotaSenseOne]Could not open port")
 
         # configuration
         if not self.setup(config):
-            print("Failed to setup sensor")
+            rospy.loginfo("[BotaSenseOne]Failed to setup sensor")
             return
-        print("Sensor setup complete")
+        rospy.loginfo("[BotaSenseOne]Sensor setup complete")
 
     def setup(self, config: Config):
         # Wait for streaming of data
         out = self._ser.read_until(bytes("App Init", "ascii"))
         if not self.contains_bytes(bytes("App Init", "ascii"), out):
-            print("Sensor not streaming, check if correct port selected!")
+            rospy.loginfo("[BotaSenseOne]Sensor not streaming, check if correct port selected!")
             return False
         time.sleep(0.5)
         self._ser.reset_input_buffer()
@@ -116,7 +125,7 @@ class BotaSerialSensor:
         self._ser.write(cmd)
         out = self._ser.read_until(bytes("r,0,C,0", "ascii"))
         if not self.contains_bytes(bytes("r,0,C,0", "ascii"), out):
-            print("Failed to go to CONFIG mode.")
+            rospy.loginfo("[BotaSenseOne]Failed to go to CONFIG mode.")
             return False
 
         # Communication setup
@@ -125,10 +134,10 @@ class BotaSerialSensor:
         self._ser.write(cmd)
         out = self._ser.read_until(bytes("r,0,c,0", "ascii"))
         if not self.contains_bytes(bytes("r,0,c,0", "ascii"), out):
-            print("Failed to set communication setup.")
+            rospy.loginfo("[BotaSenseOne]Failed to set communication setup.")
             return False
         self.time_step = 0.00001953125 * config.sinc_length
-        print("Timestep: {}".format(self.time_step))
+        rospy.loginfo("[BotaSenseOne]Timestep: {}".format(self.time_step))
 
         # Filter setup
         filter_setup = f"f,{config.sinc_length},{config.chop_enable},{config.fast_enable},{config.fir_disable}"
@@ -136,7 +145,7 @@ class BotaSerialSensor:
         self._ser.write(cmd)
         out = self._ser.read_until(bytes("r,0,f,0", "ascii"))
         if not self.contains_bytes(bytes("r,0,f,0", "ascii"), out):
-            print("Failed to set filter setup.")
+            rospy.loginfo("[BotaSenseOne]Failed to set filter setup.")
             return False
 
         # Go to RUN mode
@@ -144,7 +153,7 @@ class BotaSerialSensor:
         self._ser.write(cmd)
         out = self._ser.read_until(bytes("r,0,R,0", "ascii"))
         if not self.contains_bytes(bytes("r,0,R,0", "ascii"), out):
-            print("Failed to go to RUN mode.")
+            rospy.loginfo("[BotaSenseOne]Failed to go to RUN mode.")
             return False
 
         return True
@@ -169,7 +178,7 @@ class BotaSerialSensor:
                     crc16_ccitt = struct.unpack_from("H", crc16_ccitt_frame, 0)[0]
                     checksum = crc_calculator.checksum(data_frame)
                     if checksum == crc16_ccitt:
-                        print("Frame synced")
+                        rospy.loginfo("[BotaSenseOne]Frame synced")
                         frame_synced = True
                     else:
                         self._ser.read(1)
@@ -178,7 +187,7 @@ class BotaSerialSensor:
                 frame_header = self._ser.read(1)
 
                 if frame_header != self.header:
-                    print("Lost sync")
+                    rospy.loginfo("[BotaSenseOne]Lost sync")
                     frame_synced = False
                     break
 
@@ -188,7 +197,7 @@ class BotaSerialSensor:
                 crc16_ccitt = struct.unpack_from("H", crc16_ccitt_frame, 0)[0]
                 checksum = crc_calculator.checksum(data_frame)
                 if checksum != crc16_ccitt:
-                    print("CRC mismatch received")
+                    rospy.loginfo("[BotaSenseOne]CRC mismatch received")
                     break
 
                 self._status = struct.unpack_from("H", data_frame, 0)[0]
@@ -203,6 +212,12 @@ class BotaSerialSensor:
                     temperature=struct.unpack_from("f", data_frame, 30)[0],
                 )
 
+                if Reading.timestamp != self.reading_message.data[6]:
+                    self.reading_message.data = np.array([self.reading.fx, self.reading.fy, self.reading.fz,
+                                                           self.reading.mx, self.reading.my, self.reading.mz,
+                                                           self.reading.timestamp, self.reading.temperature])
+                    self.reading_pub.publish(self.reading_message)
+
     def start(self):
         self.proc_thread = threading.Thread(target=self._processdata_thread)
         self.proc_thread.start()
@@ -211,28 +226,3 @@ class BotaSerialSensor:
         self._pd_thread_stop_event.set()
         self.proc_thread.join()
         self._ser.close()
-
-
-if __name__ == "__main__":
-    port = "/dev/ttyUSB0"
-    sensor = BotaSerialSensor(port)
-    sensor.start()
-    count = 1000
-
-    try:
-        time_start = time.time()
-        while count>0:
-            data = sensor.reading
-            timestamp = sensor.reading.timestamp
-            force_norm = np.sqrt(data.fx**2 + data.fy**2 + data.fz**2)
-            count = count - 1
-            while timestamp == sensor.reading.timestamp:
-                time.sleep(0.0005)
-
-        time_tot = time.time() - time_start
-
-        print("frequency is ", 1000/time_tot)
-        
-
-    except KeyboardInterrupt:
-        print("stopped")

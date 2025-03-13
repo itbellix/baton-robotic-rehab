@@ -54,7 +54,7 @@ if setup=='newLab_facingRobot':
     if subject == 'subject1':
         position_gh_in_base = np.array([-0.9, 0, 0.62]) # position of the center of the shoulder frame (GH joint) in the base frame [m]
 
-    ar_offset = - np.pi/4
+    ar_offset = 0
 
 if setup=='OldLab':                  
     # This is the setup used before the lab was moved
@@ -270,6 +270,7 @@ experimental_params['base_R_shoulder'] = base_R_shoulder
 experimental_params['L_tot'] = l_arm + l_brace
 experimental_params['d_gh_ee_in_shoulder'] = dist_shoulder_ee
 experimental_params['elb_R_ee'] = elb_R_ee
+experimental_params['ft_sensor_port'] = "/dev/ttyUSB0"
 # -------------------------------------------------------------------------------
 # names of the ROS topics on which the shared communication between biomechanical-based optimization and robot control will happen
 shared_ros_topics = {}
@@ -279,4 +280,5 @@ shared_ros_topics['optimal_cartesian_ref_ee'] = '/CartesianImpedanceController/r
 shared_ros_topics['request_reference'] = 'request_reference'
 shared_ros_topics['optimization_output'] = 'optimization_output'
 shared_ros_topics['z_level'] = 'uncompensated_z_ref'
+shared_ros_topics['ft_sensor_data'] = 'ft_sensor_data'
                                                          
