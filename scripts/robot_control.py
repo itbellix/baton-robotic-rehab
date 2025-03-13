@@ -1,12 +1,6 @@
 """
 Script to control the KUKA LBR iiwa both in simulation and in the lab.
-It builds on top of the iiwa-ros repository, available at https://gitlab.tudelft.nl/kuka-iiwa-7-cor-lab/iiwa_ros
-
-To run this code, first source your ROS distribution (tested with Noetic), then source the iiwa-ros package,
-in two different terminals. On the first terminal, launch ROS and the Gazebo environment with controller.launch
-(located in this repository, under Code/launch/). Then, run this script in the second terminal. You will be prompted
-with an interface to interact with the robot. For some tasks (like approaching the position to begin therapy),
-TO_main.py should also be started in another terminal.
+It builds on top of the iiwa_impedance_control repository, available at https://gitlab.tudelft.nl/nickymol/iiwa_impedance_control/
 
 Example usage: $ python robot_control --simulation=true
 """
@@ -17,11 +11,19 @@ import numpy as np
 # ROS libraries
 import rospy # CC
 import actionlib
+from controller_manager_msgs.srv import SwitchController
 
 # Messages to and from KUKA robot
-from cor_tud_msgs.msg import ControllerAction, ControllerGoal, CartesianState
+from iiwa_impedance_control.msg import CartesianTrajectoryExecutionAction, CartesianTrajectoryExecutionGoal, \
+                                JointTrajectoryExecutionAction, JointTrajectoryExecutionGoal, JointTrajectoryExecutionActionResult
 from std_msgs.msg import Float64MultiArray, Bool, Float32MultiArray
+from geometry_msgs.msg import PoseStamped, TwistStamped
+from sensor_msgs.msg import JointState
+
 from spatialmath import SE3
+
+# import dynamic reconfigure client to change parameters of the controller
+import dynamic_reconfigure.client
 
 # import scipy to deal with rotation matrices
 from scipy.spatial.transform import Rotation as R
@@ -39,6 +41,9 @@ import argparse
 # import the parameters for the experiment as defined in experiment_parameters.py
 from experiment_parameters import *
 
+# import the robot model
+import lbr_iiwa_robot_model as lbr
+
 class RobotControlModule:
     """
     This class implements the robot control
@@ -50,49 +55,73 @@ class RobotControlModule:
         * experimental_params: parameters that are dependent on the experimental setup 
                                (such as arm length, orientation wrt the robot, etc...)
         """
-        # get the name of the robot that we are working with
-        self.ns = rospy.get_param('/namespaces')
+        # define the robot model
+        self.robot = lbr.LBR7_iiwa_ros_DH()
 
-        # define the ros client - "/cor_tud/torque_controller" is defined on the "bringup" file
-        self.client = actionlib.SimpleActionClient(self.ns+'/torque_controller', ControllerAction)
+        # Action clients
+        self.cartesian_action_client = actionlib.SimpleActionClient('/CartesianImpedanceController/cartesian_trajectory_execution_action', CartesianTrajectoryExecutionAction)
+        self.joint_action_client = actionlib.SimpleActionClient('/JointImpedanceController/joint_trajectory_execution_action', JointTrajectoryExecutionAction)
 
-        # instantiate the controller goal that will be used to send commands to the robot
-        self.reference_tracker = ControllerGoal()
+        # Wait for servers
+        try:
+            rospy.loginfo("Waiting for cartesian_trajectory_execution action server...")
+            self.cartesian_action_client.wait_for_server()
+            rospy.loginfo(f"cartesian_trajectory_execution server found!")
+        except:
+            rospy.logwarn("cartesian_trajectory_execution action server not found...", "warn")
+        try:
+            rospy.loginfo("Waiting for joint_trajectory_execution action server...")
+            self.joint_action_client.wait_for_server()
+            rospy.loginfo(f"joint_trajectory_execution server found!")
+        except:
+            rospy.logwarn("joint_trajectory_execution server not found...", "warn")
 
-        # instantiate the controller goal that will stream the end-effector (EE) cartesian pose to the given topic
-        self.cartesian_pose_publisher = ControllerGoal()
-        self.cartesian_pose_publisher.mode = 'pub_cartesian_state'  # mode for the goal, to publish the cartesian state of the EE
-        self.cartesian_pose_publisher.topic = 'ee_cartesian_pose'   # name of the topic on which to publish the cartesian state
-        self.cartesian_pose_publisher.flag = False                  # setting this initializes the publisher to be inactive
+        # Controller manager service
+        try:
+            rospy.wait_for_service('/iiwa/controller_manager/switch_controller', timeout=10)
+            self.controller_manager = rospy.ServiceProxy('/iiwa/controller_manager/switch_controller', SwitchController)
+            rospy.loginfo("Controller manager found!")
+        except rospy.ROSException:
+            rospy.logwarn("Controller manager not found!")
 
-        # send immediately the first ControllerGoal, so that the robot will keep its current position until commanded otherwise
-        goal = ControllerGoal()
-        goal.mode = 'ee_cartesian'
-        goal.reference = []             # no reference, so that the current one will be used
-        goal.stiffness = goal.stiffness = np.array([150, 150, 150, 25, 25, 25])
-        goal.damping = 2*np.sqrt(goal.stiffness)
-        goal.time = 0.1
-        goal.rate = 20
+        # keep track of the controller currently used
+        self.active_controller = 'JIC'     # options are "JIC" or "CIC" (Joint Impedance Controller or Cartesian Impedance Controller)
 
-        self.client.wait_for_server()       # necessary the first time to establish communication properly
-        self.client.send_goal(goal)         # this will allow us to set what we want in the rest of the code
-        self.client.wait_for_result()
+        # instantiate a client to modify the parameters of the controller in real-time
+        self.reconf_client_cart = dynamic_reconfigure.client.Client('/CartesianImpedanceController/dynamic_reconfigure_server_node', timeout=30)
+        self.reconf_client_joint = dynamic_reconfigure.client.Client('/JointImpedanceController/dynamic_reconfigure_server_node', timeout=30)
 
-        # define a ROS subscriber to have access to the cartesian pose of the EE if needed
-        self.sub_to_cartesian_pose = rospy.Subscriber(self.ns+'/'+self.cartesian_pose_publisher.topic,  # name of the topic to subscribe to
-                                                      CartesianState,                                   # type of ROS message to receive
+        # define ROS subscribers
+        self.sub_to_cartesian_pose = rospy.Subscriber('/CartesianImpedanceController/cartesian_pose',   # name of the topic to subscribe to
+                                                      PoseStamped,                                      # type of ROS message to receive
                                                       self._callback_ee_pose,                           # callback
                                                       queue_size=1)
         
+        self.sub_to_cartesian_twist = rospy.Subscriber('/CartesianImpedanceController/cartesian_twist',
+                                                        TwistStamped,
+                                                        self._callback_ee_twist,
+                                                        queue_size=1)
+        
+        self.sub_to_joint_state_cart = rospy.Subscriber('/CartesianImpedanceController/joint_states',
+                                                   JointState,
+                                                   self._callback_joint_state_cart,
+                                                   queue_size=1)
+        
+        self.sub_to_joint_state_joint = rospy.Subscriber('/JointImpedanceController/joint_states',
+                                                   JointState,
+                                                   self._callback_joint_state_joint,
+                                                   queue_size=1)
+        
         # define a ROS publisher to convert current cartesian pose into shoulder pose
         self.topic_shoulder_pose= shared_ros_topics['estimated_shoulder_pose']
-        self.pub_shoulder_pose = rospy.Publisher(self.topic_shoulder_pose, Float64MultiArray, queue_size = 1)
+        self.pub_shoulder_pose = rospy.Publisher(self.topic_shoulder_pose, Float32MultiArray, queue_size = 1)
 
         # define a ROS subscriber to receive the commanded (optimal) trajectory for the EE, from the
         # biomechanical-based optimization
+        # TODO: figure out how to do this with Nicky's repo (part of commanding given reference is unclear for me)
         self.topic_optimal_pose_ee = shared_ros_topics['optimal_cartesian_ref_ee']
         self.sub_to_optimal_pose_ee = rospy.Subscriber(self.topic_optimal_pose_ee, 
-                                                       Float64MultiArray,
+                                                       PoseStamped,
                                                        self._callback_ee_optimal_pose,
                                                        queue_size=1)
         
@@ -100,10 +129,12 @@ class RobotControlModule:
         self.ee_pose_curr = None            # EE current pose
         self.ee_desired_pose = None         # EE desired pose
         self.ee_twist_curr = None           # EE current twist (linear and angular velocity in robot base frame)
-        self.desired_pose_reached = None    # the end effector has effectively reached the desired point
+        self.desired_pose_reached = False    # the end effector has effectively reached the desired point
         self.initial_pose_reached = False   # one-time flag to be adjusted when the robot reaches the required
                                             # starting point. When set to true, the estimated shoulder state are meaningful
-
+        self.joint_states = None
+        self.joint_velocities = None
+        self.joint_effors = None
 
         # define parameters for the filtering of the human state estimation
         self.alpha_p = 0.8                  # weight of the exponential moving average filter (position part)
@@ -124,36 +155,61 @@ class RobotControlModule:
         # store the experimental parameters
         self.exp_prms = experimental_params
 
-        # store information about the physical robot
-        self.joint_limits = np.array([[-170, 170],      # joint limits for each joint of the robot, in degrees
-                                      [-120, 120],
-                                      [-170, 170],
-                                      [-120, 120],
-                                      [-170, 170],
-                                      [-120, 120],
-                                      [-175, 175]])
-        
-        self.base_nullspace_gains_j = 1/np.deg2rad(self.joint_limits[:,1] - self.joint_limits[:, 0])    # base nullspace gains (for joints)
-
         # create a publisher to interface with the RMR solver
         self.topic_rmr = '/kukadat'
         self.pub_rmr_data = rospy.Publisher(self.topic_rmr, Float32MultiArray, queue_size = 1)
 
+
+    def _callback_ee_twist(self,data):
+        """
+        This callback is dedicated to listening to the current twist of the end effector.
+        Internal parameters of the module are updated accordingly (v and omega in robot's base frame).
+        """
+        self.ee_twist_curr = np.array([data.twist.linear.x, data.twist.linear.y, data.twist.linear.z,
+                                       data.twist.angular.x, data.twist.angular.y, data.twist.angular.z])
+        
+
+    def _callback_joint_state_cart(self,data):
+        """
+        This callback is dedicated to listening to the current joint state of the robot.
+        Internal parameters of the module are updated accordingly. This is triggered when the Cartesian impedance controller is active.
+        """
+        self.joint_states = np.array(data.position)
+        self.joint_velocities = np.array(data.velocity)
+        self.joint_effors = np.array(data.effort)
+
+    
+    def _callback_joint_state_joint(self,data):
+        """
+        This callback is dedicated to listening to the current joint state of the robot.
+        Internal parameters of the module are updated accordingly. This is triggered when the Joint impedance controller is active.
+        """
+        self.joint_states = np.array(data.position)
+        self.joint_velocities = np.array(data.velocity)
+        self.joint_effors = np.array(data.effort)
+
+
     def _callback_ee_pose(self,data):
         """
-        This callback is linked to the ROS subscriber that listens to the topic where the cartesian pose of the EE is published.
+        This callback is linked to the ROS subscriber that listens to the topic where the cartesian pose and twist of the EE is published.
+        Message type is expected to be custom PoseTwistStamped, defined in the iiwa_impedance_control package available at https://gitlab.tudelft.nl/nickymol/iiwa_impedance_control.
         It processes the data received and updates the internal parameters of the RobotControlModule accordingly.
         If the desired position for the therapy/experiment has been reached, it also converts the current EE pose into shoulder pose 
         (under the assumption that the glenohumeral joint center is fixed in space), and publishes this information on a topic.
         """
-        self.ee_pose_curr = SE3(np.array(data.pose).reshape(4,4))   # value for the homogenous matrix describing ee pose
-        self.ee_twist_curr = np.array(data.velocity)                # value for the twist (v and omega, in base frame)
-        # check if the robot has already reached its desired pose (if so, publish shoulder poses too)
-        if self.initial_pose_reached:
+        cart_pose_ee = np.array([data.pose.position.x, data.pose.position.y, data.pose.position.z])
+        orientation_quat = np.array([data.pose.orientation.x, data.pose.orientation.y, data.pose.orientation.z, data.pose.orientation.w])
+        homogeneous_matrix = np.eye(4)
+        homogeneous_matrix[0:3, 0:3] = R.from_quat(orientation_quat).as_matrix()
+        homogeneous_matrix[0:3, 3] = cart_pose_ee
+        self.ee_pose_curr = SE3(homogeneous_matrix)   # value for the homogenous matrix describing ee pose
+        
+        # check if the robot has already reached its desired pose (if so, publish shoulder poses too) 
+        # and if at least one twist message has been received
+        if self.initial_pose_reached and self.ee_twist_curr is not None:
             R_ee = self.ee_pose_curr.R    # retrieve the rotation matrix defining orientation of EE frame
             sh_R_elb = np.transpose(experimental_params['base_R_shoulder'].as_matrix())@R_ee@np.transpose(experimental_params['elb_R_ee'].as_matrix())
 
-            cart_pose_ee = self.ee_pose_curr.t
             direction_vector = cart_pose_ee - experimental_params['p_gh_in_base']
             direction_vector_norm = direction_vector / np.linalg.norm(direction_vector)
 
@@ -252,7 +308,7 @@ class RobotControlModule:
             xyz_ee = self.ee_pose_curr.t
 
             # build the message and fill it with information
-            message = Float64MultiArray()
+            message = Float32MultiArray()
             message.data = np.round(np.concatenate((np.array([pe, pe_dot, se, se_dot, ar, ar_dot]), xyz_ee)), 3)
 
             message_rmr = Float32MultiArray()
@@ -267,15 +323,17 @@ class RobotControlModule:
     def _callback_ee_optimal_pose(self,data):
         """
         This callback is linked to the ROS subscriber that listens to the topic where the desired cartesian pose of the EE 
-        is published. It processes the data received and updates the internal parameters of the RobotControlModule accordingly.
+        is published. It processes the data received (PoseStamped) and updates the internal parameters of the RobotControlModule.
         """
         # the message that we receive contains the required cartesian pose for the end effector in terms of an homogenous matrix.
-        homogeneous_matrix = np.array(data.data).reshape((4,4))
+        homogeneous_matrix = np.eye(4)
+        homogeneous_matrix[0:3, 0:3] = R.from_quat([data.pose.orientation.x, data.pose.orientation.y, data.pose.orientation.z, data.pose.orientation.w]).as_matrix()
+        homogeneous_matrix[0:3, 3] = np.array([data.pose.position.x, data.pose.position.y, data.pose.position.z])
         self.ee_desired_pose = homogeneous_matrix
 
         # calculate corresponding 3D position and euler angles just in case
-        xyz_position = homogeneous_matrix[0:3, 3]
-        euler_angles = R.from_matrix(homogeneous_matrix[0:3, 0:3]).as_euler('zxy', degrees=False)
+        # xyz_position = homogeneous_matrix[0:3, 3]
+        # euler_angles = R.from_matrix(homogeneous_matrix[0:3, 0:3]).as_euler('zxy', degrees=False)
 
     
     def togglePublishingEEPose(self, flag, last_controller_mode=None):
@@ -304,26 +362,6 @@ class RobotControlModule:
             self.client.wait_for_server()
             self.client.send_goal(last_controller_mode)
             self.client.wait_for_result()
-
-
-    def goHoming(self, time):
-        """
-        This function is a utility to send the robot in its "home" configuration (i.e. all links are aligned, straight up).
-        The only parameter that can be used is "time", to specify the duration of the movement to reach the home configuration.
-        """
-        # set the parameters of the ControllerGoal
-        self.reference_tracker.mode = 'joint_ds'
-        self.reference_tracker.reference = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        self.reference_tracker.time = time
-        self.reference_tracker.precision = 1e-1
-        self.reference_tracker.rate = 20
-        self.reference_tracker.stiffness = 30* np.ones(7)
-        self.reference_tracker.damping = np.sqrt(self.reference_tracker.stiffness)
-
-        # send the ControllerGoal to start the motion towards the required reference
-        self.client.wait_for_server()
-        self.client.send_goal(self.reference_tracker)
-        self.client.wait_for_result()
 
 
     def getEEDesiredPose(self):
@@ -360,7 +398,7 @@ class RobotControlModule:
         self.client.send_goal(self.reference_tracker)
         self.desired_pose_reached = self.client.wait_for_result()
 
-        print("Switch to Cartesian Mode")
+        rospy.loginfo("Switch to Cartesian Mode")
         # use ee_cartesian_ds mode to actually reach the cartesian pose we want
         self.reference_tracker.mode = 'ee_cartesian_ds'
 
@@ -383,14 +421,10 @@ class RobotControlModule:
         self.desired_pose_reached = self.client.wait_for_result()
         
 
-    def trackReferenceOnTopic(self, topic, flag):
+    def trackReferenceStream(self, flag):
         """
-        This function takes as inputs:
-        * the topic on which the reference to track will be published
-        * a flag to toggle the tracking of the reference (True or False)
+        This function takes as inputs the boolean flag to toggle the tracking of the reference.
         """
-
-        control_module.toggleListenCartRef(topic, flag) # listening to a reference on the given topic is toggled
         self.requesting_reference = flag
 
         if flag and not self.thread_therapy_status.is_alive():
@@ -404,7 +438,7 @@ class RobotControlModule:
         This allows to perform all the start up procedures, and the optimal trajectory for the robot EE will be published
         only when the subject/experimenter are ready to start.
         """
-        rate = rospy.Rate(5)        # setting the rate quite low so that the publishing happens not too often
+        rate = rospy.Rate(10)        # setting the rate quite low so that the publishing happens not too often
         while not rospy.is_shutdown():
             self.pub_request_reference.publish(self.requesting_reference)
             rate.sleep()
@@ -414,40 +448,25 @@ class RobotControlModule:
         """
         This function allows to stop the execution. 
         If the robot is being operated in CARTESIAN mode, the current EE pose is set as a reference and kept.
-        If the robot is in JOINT mode, the last commanded joint pose is kep, and the robot is driven to that.
+        If the robot is in JOINT mode, the last commanded joint pose is kept, and the robot is driven to that.
         """
-        current_mode = self.reference_tracker.mode
-        if current_mode[0:12] == 'ee_cartesian':
-            # retrieve the current position of the end effector in cartesian coordinates
-            current_position = self.ee_pose_curr.t
-            current_orientation = R.from_matrix(self.ee_pose_curr.R).as_euler('zyx', degrees=False)
-            current_pose = np.concatenate((current_position, current_orientation))
-
-            # set the parameters to the ControllerGoal to freeze the robot where it is
-            self.reference_tracker.mode = 'ee_cartesian_ds'
-            self.reference_tracker.time = 0.1
-            self.reference_tracker.reference = current_pose
-            self.reference_tracker.stiffness = np.array([150, 150, 150, 10, 10, 10])           # the rotational DoF are left almost free for safety
-            self.reference_tracker.damping = 2*np.sqrt(self.reference_tracker.stiffness)
-        
-        elif current_mode[0:5] == 'joint':
-            # retrieve the last reference commanded
-            last_joint_command = self.reference_tracker.reference
-
-            # set the parameters to the ControllerGoal to freeze the robot where it is
-            self.reference_tracker.mode = 'joint_ds'
-            self.reference_tracker.time = 5
-            self.reference_tracker.reference = last_joint_command
-            self.reference_tracker.stiffness = 30* np.ones(7)
-            self.reference_tracker.damping = 2*np.sqrt(self.reference_tracker.stiffness)
-            
-        # send the goal for termination to take effect
-        self.client.send_goal(self.reference_tracker)
-        self.client.wait_for_result()
+        # set the current configuration as the reference for the robot
+        self.reconf_client_cart.update_configuration({'set_new_reference_pose':True})
+        self.reconf_client_joint.update_configuration({'set_new_reference_pose':True})
 
         # set correct flags to let TO_module know we are done
-        self.requesting_reference = False
-        self.pub_request_reference.publish(self.requesting_reference)
+        self.trackReferenceStream(False)
+
+        # allow some time for the update to be processed
+        rospy.sleep(0.1)
+
+
+    def cartesian_trajectory_done_callback(self, status, result):
+        self.desired_pose_reached = result.success
+
+    
+    def joint_trajectory_done_callback(self, status, result):
+        self.desired_pose_reached = result.success
 
 
     def test_publish_cartesian(self, reference, time_movement, stiffness, damping = None, nullspace_gain = np.zeros(7), nullspace_reference = np.zeros(7)):
@@ -495,48 +514,6 @@ class RobotControlModule:
         self.client.wait_for_result()
 
 
-    def toggleListenCartRef(self, topic, flag):
-        """
-        This function provides a utility to start/stop listening to the cartesian
-        reference for the ee, published on a given topic. Publishing on the topic should
-        happen soon after (~1s) the function is called. If flag=False, the robot controller
-        will stop tracking the reference on the topic.
-        """
-        self.reference_tracker.mode = "listen_cartesian_ref"
-        self.reference_tracker.topic = topic
-        self.reference_tracker.flag = flag
-
-        # send the goal
-        self.client.send_goal(self.reference_tracker)
-        self.client.wait_for_result()
-
-
-    def test_publish_ref_on_topic(self, publisher, ref, frequency=100):
-        """
-        This function will be executed in another thread. It will publish the given reference (6x1 ee pose),
-        as long as the "pub_from_thread" variable is true.
-        It can be useful to start publishing a fixed reference to ensure that the mode 'listen_cartesian_ref'
-        will succeed and will start reading from where the publisher is publishing.
-        Optionally, a frequency for publishing the reference message can be given
-        """
-        rate = rospy.Rate(frequency)  # Set the publishing rate
-
-        while not rospy.is_shutdown() and self.pub_from_thread:
-            homogeneous_matrix = np.eye(4)
-            homogeneous_matrix[0:3, 3] = np.transpose(ref[0:3])
-            rot = R.from_euler('xyz', ref[3::], degrees=False).as_matrix()
-            homogeneous_matrix[0:3, 0:3] = rot
-
-            # create the message
-            message_ref = Float64MultiArray()
-            message_ref.layout.data_offset = 0
-            message_ref.data = np.reshape(homogeneous_matrix, (16,1))
-
-            # send the message and sleep
-            publisher.publish(message_ref)
-            rate.sleep()
-
-
 if __name__ == "__main__":
     try:
         # check if we are running in simulation or not
@@ -551,8 +528,8 @@ if __name__ == "__main__":
         else:
             rt_factor = 1
 
-        print("Running with simulation settings: ", simulation)
-        print("real time factor: ", rt_factor)
+        rospy.loginfo("Running with simulation settings: ", simulation)
+        rospy.loginfo("real time factor: ", rt_factor)
 
         # initialize ros node and set desired rate (imported above as a parameter)
         rospy.init_node("robot_control_module")
@@ -594,21 +571,22 @@ if __name__ == "__main__":
         # instantiate a RobotControlModule with the correct shared ros topics (coming from experiment_parameters.py)
         control_module = RobotControlModule(shared_ros_topics, experimental_params)
 
-        print("control module instantiated")
-        # set the robot in the homing pose, to always start from there
-        homing_time = 5/rt_factor             # [s] time required to complete homing
-        print("Initiating homing")
-        control_module.goHoming(homing_time)
-        print("Completed homing")
+        rospy.loginfo("control module instantiated")
 
-        print("start publishing current EE pose")
+        # first make sure that we start from the homing position
+        rospy.loginfo("Moving to homing position")
+        goal = JointTrajectoryExecutionGoal()
+        joint_pose_msg = Float64MultiArray()
+        joint_pose_msg.data = np.zeros(7)       # retrieve the joint angles for the desired pose
+        goal.joint_positions_goal = joint_pose_msg
         
-        # the last ControlGoal to be sent is the one inside goHoming() -> it is the reference_tracker
-        # here we change the execution time, and then send it to the togglePublishingEEPose so that the
-        # same control mode, stiffness, damping and reference are maintained
-        control_module.reference_tracker.time = 1/rt_factor
-        control_module.togglePublishingEEPose(True, control_module.reference_tracker)
-        print("Current pose is being published")
+        joint_vel_msg = Float64MultiArray()
+        joint_vel_msg.data = rt_factor * 0.2 * np.ones(7)   # setting reference speet to 0.1 rad/s for all joints   
+        goal.joint_velocities_goal = joint_vel_msg
+        control_module.joint_action_client.send_goal(goal)
+        control_module.joint_action_client.wait_for_result()
+
+        rospy.loginfo("Homing position reached")
 
         while not rospy.is_shutdown() and ongoing_therapy:
             # state machine to allow for easier interface
@@ -621,155 +599,126 @@ if __name__ == "__main__":
 
                 # 'a': approach initial pose
                 if pressed_key.get() == "a":
-                    if control_module.getEEDesiredPose() is None:         # be sure that we know where to go
-                        print("waiting for initial pose to be known")
-                        while control_module.getEEDesiredPose() is None:
-                            ros_rate.sleep()
-                    
-                    duration_movement = 20/rt_factor           # duration of the approach to the initial pose [s]
-                    rate = 20                                   # num. of via-points per second 
-                                                                # (from interpolation between current state and desired pose)
-                    precision = 1e-2                            # precision required for reaching the goal [m]
-                    stiffness = np.array([300, 300, 300, 10, 10, 2])
-                    # stiffness = np.array([200, 200, 200, 15, 15, 2])    # low stiffness (issue #162)
-                    # stiffness = np.array([350, 350, 350, 45, 45, 10])   # high stiffness (issue #162)
-                    damping = 2*np.sqrt(stiffness)             # decrease damping to increase stability
+                    if control_module.active_controller == 'JIC':
+                        if control_module.getEEDesiredPose() is None:         # be sure that we know where to go
+                            rospy.loginfo("waiting for initial pose to be known")
+                            while control_module.getEEDesiredPose() is None:
+                                ros_rate.sleep()
 
-                    print("moving to initial position")
-                    control_module.moveToEEDesiredPose(duration_movement, rate, precision, stiffness, damping)
+                        rospy.loginfo("Moving to initial pose")
+                        # the retrieved goal is a homogenous matrix representing the desired pose for the robot's end-effector
+                        homogenous_matrix_goal = control_module.getEEDesiredPose()
+                        quat_orientation_goal = R.from_matrix(homogenous_matrix_goal[0:3, 0:3]).as_quat()   # x, y, z, w order
 
-                    if control_module.desired_pose_reached:
-                        # add nullspace control on robot's elbow
-                        control_module.reference_tracker.mode = 'elbow'
-                        control_module.reference_tracker.reference = np.array([0.0, 0.0, 0.55])
-                        control_module.reference_tracker.flag = True
-                        control_module.reference_tracker.joints = [3]
-                        if simulation == True:
-                            control_module.reference_tracker.stiffness = ns_elb_stiffness_sim
-                            control_module.reference_tracker.damping = ns_elb_damping_sim
-                        else:
-                            control_module.reference_tracker.stiffness = ns_elb_stiffness
-                            control_module.reference_tracker.damping = ns_elb_damping
+                        # build the goal to send to the controller (we assume that the controller is set to be a JointImpedanceController)
+                        goal = JointTrajectoryExecutionGoal()
+                        joint_pose_msg = Float64MultiArray()
+                        joint_pose_msg.data = control_module.robot.ikine_LM(homogenous_matrix_goal, q0 = control_module.joint_states).q   # retrieve the joint angles for the desired pose
+                        goal.joint_positions_goal = joint_pose_msg
                         
-                        control_module.client.send_goal(control_module.reference_tracker)
-                        result = control_module.client.wait_for_result()
+                        joint_vel_msg = Float64MultiArray()
+                        joint_vel_msg.data = rt_factor * 0.2 * np.ones(7)  # setting reference speed to 0.2 rad/s for all joints   
+                        goal.joint_velocities_goal = joint_vel_msg
+                        control_module.joint_action_client.send_goal(goal, control_module.joint_trajectory_done_callback)
+                        
+                        # wait for the robot to reach the desired pose
+                        control_module.joint_action_client.wait_for_result()
 
-                        # add nullspace control on robot's last links
-                        if experiment == 1:
-                            control_module.reference_tracker.mode = 'ee_cartesian_ds'
-                            control_module.reference_tracker.reference = []
-                            control_module.reference_tracker.time = 1
-                            control_module.reference_tracker.rate = 20
-                            control_module.reference_tracker.stiffness = stiffness
-                            control_module.reference_tracker.damping = damping
-                            control_module.reference_tracker.nullspace_gain = np.array([0, 0, 0, 0, 1, 1, 0.5])
-                            control_module.reference_tracker.nullspace_reference = np.array([0, 0, 0, 0, 0, 0, 0])
-                            control_module.client.send_goal(control_module.reference_tracker)
-                            result = control_module.client.wait_for_result()
+                        if control_module.desired_pose_reached:
+                            rospy.sleep(0.1)    # wait a bit to make sure that the robot is stable
 
-                        # set the flag for indicating completion, and inform the user
-                        control_module.initial_pose_reached = True
-                        print("Reached initial position. Starting to publish on topic %s (order data is [pe, se, ar])" % control_module.topic_shoulder_pose)
-                        print("-----------------------------------------------")
-                        print("Therapy can start")
-                        print("-----------------------------------------------")
+                            # switch to cartesian impedance controller
+                            response = control_module.controller_manager(start_controllers=['/CartesianImpedanceController'],
+                                                            stop_controllers=['/JointImpedanceController'], strictness=1,
+                                                            start_asap=True, timeout=0.0)
 
+                            if not response.ok:
+                                rospy.logerr("Failed to switch to Cartesian controller")
+                            else:
+                                control_module.active_controller = 'CIC'
+
+                            # add nullspace control on robot's elbow
+                            control_module.reconf_client_cart.update_configuration({'cart_nullspace_control': True, 
+                                                                            'elbow_ref_z':0.55, 
+                                                                            'nullspace_stiffness_elbow_x':10,
+                                                                            'nullspace_stiffness_elbow_y':10,
+                                                                            'nullspace_stiffness_elbow_z':10})
+                            # TODO: maybe smarter to use a YAML file to set these values more easily!
+                            
+                            if experiment == 1:
+                                # with the old controller I would add a nullspace joint controller also on the last links (to keep them close to 0)
+                                # this is not implemented yet in the new controller
+                                # TODO: test if we can maybe work around this by using only nullspace joint controller also above!
+                                pass
+
+                            # set the flag for indicating completion, and inform the user
+                            control_module.initial_pose_reached = True
+                            rospy.loginfo("Reached initial position. Starting to publish on topic %s (order data is [pe, se, ar])" % control_module.topic_shoulder_pose)
+                            rospy.loginfo("-----------------------------------------------")
+                            rospy.loginfo("Therapy can start")
+                            rospy.loginfo("-----------------------------------------------")
+
+                        else:
+                            rospy.loginfo("Initial position could not be reached... Try again!")
+
+                    elif control_module.active_controller == 'CIC':
+                        rospy.loginfo("Robot is controlled by a CIC. Switching to a JIC...")
+                        # switch to cartesian impedance controller
+                        response = control_module.controller_manager(start_controllers=['/JointImpedanceController'],
+                                                                     stop_controllers=['/CartesianImpedanceController'], strictness=1,
+                                                                     start_asap=True, timeout=0.0)
+                        if response.ok:
+                            control_module.active_controller = 'JIC'
+                        else:
+                            rospy.logerr("Failed to switch to Joint controller")
+                        
+                        rospy.loginfo("Switched to JIC. Now you can try to move to the initial pose.")
                     else:
-                        print("Initial position could not be reached... Try again!")
+                        rospy.loginfo("Robot is controlled by an unknown controller. Cannot move to initial pose.")
 
                 # 's' : start the therapy
                 if pressed_key.get() == "s":
                     if control_module.initial_pose_reached:
-                        # switch to pure cartesian mode
-                        # further increase stiffness
-                        if simulation == True:
-                            stiffness_higher = ee_stiffness_sim
-                            damping_higher = ee_damping_sim
-                        else:
-                            stiffness_higher = ee_stiffness
-                            damping_higher = ee_damping 
+                        # set experimentally tuned stiffness of np.array([550, 550, 550, 15, 15, 4])
+                        control_module.reconf_client_cart.update_configuration({'separate_axis':False, 'translational_stiffness':550, 'rotational_stiffness':10})
 
-                        control_module.reference_tracker.mode = 'ee_cartesian'
-                        control_module.reference_tracker.reference = []
-                        control_module.reference_tracker.stiffness = stiffness_higher
-                        control_module.reference_tracker.damping = damping_higher
-                        control_module.client.send_goal(control_module.reference_tracker)
-                        control_module.client.wait_for_result()
-                        print("Start to follow optimal reference")
-                        topic = shared_ros_topics['optimal_cartesian_ref_ee']
-                        control_module.trackReferenceOnTopic('/'+topic, True)
+                        rospy.loginfo("Start to follow optimal reference")
+                        control_module.trackReferenceStream(True)
                     else:
-                        print("Robot is not in the initial pose yet. Doing nothing.")
+                        rospy.loginfo("Robot is not in the initial pose yet. Doing nothing.")
 
                 # 'p' : pause the therapy
                 if pressed_key.get() == "p":
-                    print("Pause trajectory generation")
+                    rospy.loginfo("Pause trajectory generation")
                     topic = shared_ros_topics['optimal_cartesian_ref_ee']
-                    control_module.trackReferenceOnTopic('/'+topic, False)
+                    control_module.trackReferenceStream(False)
 
                 # 't' : test something
                 if pressed_key.get() == "t":
-                    print("Moving to initial pose for testing")
-                    # TEST: send a fixed goal to move to a known position, then start sending a trajectory reference 
-                    # to see if we can do it properly
-                    cartesian_0 = np.array([-0.4, 0, 0.6])
-
-                    euler_0 = np.array([0, 0, 0])
-
-                    ref = np.concatenate((cartesian_0, euler_0))
-                    time_movement = 20
-
-                    # go to ref
-                    control_module.test_publish_cartesian(ref, time_movement)
-
-                    # now, enable elbow 
-                    input("\nPress any key to turn elbow on")
-                    control_module.reference_tracker.mode = 'elbow'
-                    control_module.reference_tracker.reference = np.array([0.0, 0.0, 0.55])
-                    control_module.reference_tracker.flag = True
-                    control_module.reference_tracker.joints = [3]
-                    control_module.client.send_goal(control_module.reference_tracker)
-                    result = control_module.client.wait_for_result()
-
-                    
-                    input("Press any key to move ee to new position")
-                    cartesian_0 = np.array([-0.6, 0, 0.7])
-
-                    euler_0 = np.array([0, 0, 0])
-
-                    ref = np.concatenate((cartesian_0, euler_0))
-                    time_movement = 10
-
-                    control_module.test_publish_cartesian(ref, time_movement)
-
-                    print("Done")
+                    # Implement here the test we need
+                    rospy.loginfo("No test implemented yet. Doing nothing")
 
                 # 'z' set cartesian stiffness and damping to 0
                 if pressed_key.get() == 'z':
-                    print("Zero stiffness/damping in 5 seconds")
+                    rospy.loginfo("Zero stiffness/damping in 5 seconds")
                     time.sleep(2)
-                    print("3")
+                    rospy.loginfo("3")
                     time.sleep(1)
-                    print("2")
+                    rospy.loginfo("2")
                     time.sleep(1)
-                    print("1")
+                    rospy.loginfo("1")
                     time.sleep(1)
 
                     # switch to zero stiffness and damping
-                    ref = []
-                    time_movement = 3
-                    stiffness = np.array([0, 0, 0, 0, 0, 0])
-                    damping = np.array([0, 0, 0, 0, 0, 0])
-                    nullspace_gain = np.array([0, 0, 0, 0, 1, 1, 0.5])
-                    nullspace_reference = np.array([0, 0, 0, 0, 0, 0, 0])
-                    control_module.test_publish_cartesian(ref, time_movement, stiffness, damping, nullspace_gain, nullspace_reference)
-                    
+                    control_module.reconf_client_cart.update_configuration({'set_new_reference_pose':True,
+                                                                            'translational_stiffness':0, 
+                                                                            'rotational_stiffness':0})
                     #confirm that everything went smoothly
-                    print("Free movement possible")
+                    rospy.loginfo("Free movement possible")
 
                 # 'q': quit the execution, and freeze the robot to the current pose
                 if pressed_key.get() == "q":
-                    print("shutting down - freezing to current position")
+                    rospy.loginfo("shutting down - freezing to current position")
                     control_module.stop()
 
                     # adjust flag for termination

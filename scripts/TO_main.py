@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
         # define the required paths
         code_path = os.path.dirname(os.path.realpath(__file__))     # getting path to where this script resides
-        path_to_repo = os.path.join(code_path, '..', '..')          # getting path to the repository
+        path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
         path_to_model = os.path.join(path_to_repo, 'Musculoskeletal Models')    # getting path to the OpenSim models
 
         ## PARAMETERS -----------------------------------------------------------------------------------------------
@@ -73,11 +73,25 @@ if __name__ == '__main__':
         # choose solver and set its options
         solver = 'ipopt'        # available solvers depend on CasADi interfaces
 
-        opts = {'ipopt.print_level': 5,         # options for the solver (check CasADi/solver docs for changing these)
-                'print_time': 0,
-                'ipopt.tol': 1e-3,
-                'error_on_fail':1,              # to guarantee transparency if solver fails
-                'ipopt.linear_solver':'ma27'}
+        # quick check to determine if linear solver ma27 from HSL is available. Otherwise, we use MUMPS
+        # Define a simple NLP problem for this use
+        rospy.loginfo("checking which linear solver is available")
+        chosen_solver = "ma27" if utils_TO.is_hsl_present() else "mumps"
+
+        if chosen_solver == "ma27":
+            opts = {'ipopt.print_level': 5,         # options for the solver (check CasADi/solver docs for changing these)
+                    'print_time': 0,
+                    'ipopt.tol': 1e-3,
+                    'error_on_fail':1,              # to guarantee transparency if solver fails
+                    'ipopt.linear_solver':'ma27'}
+        elif chosen_solver == "mumps":
+            opts = {'ipopt.print_level': 5,         # options for the solver (check CasADi/solver docs for changing these)
+                    'print_time': 0,
+                    'ipopt.tol': 1e-3,
+                    'error_on_fail':1,              # to guarantee transparency if solver fails
+                    'ipopt.linear_solver':'mumps'}
+        else:
+            rospy.ERROR("No linear solver available. Please install HSL for ma27 or MUMPS for mumps.")
 
         if use_casadi_function:
             opts['expand'] = 1  # allows to speed up code (only for OpenSimAD-generated function)

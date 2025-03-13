@@ -20,9 +20,11 @@ import os
 import time
 import threading
 import pygame
+import ctypes
 
 # Messages
-from std_msgs.msg import Float64MultiArray, Bool
+from std_msgs.msg import Float64MultiArray, Float32MultiArray, Bool
+from geometry_msgs.msg import PoseStamped
 
 from experiment_parameters import *     # this contains the experimental_params and the shared_ros_topics
 
@@ -93,22 +95,22 @@ class TO_module:
 
         # Create publisher for the optimal cartesian trajectory for the KUKA end-effector
         self.topic_opt_traj = shared_ros_topics['optimal_cartesian_ref_ee']
-        self.pub_trajectory = rospy.Publisher(self.topic_opt_traj, Float64MultiArray, queue_size=1)
+        self.pub_trajectory = rospy.Publisher(self.topic_opt_traj, PoseStamped, queue_size=1)
         self.flag_pub_trajectory = False    # flag to check if trajectory is being published (default: False = no publishing)
         
         # Create the publisher for the unused z_reference
         # It will publish the uncompensated z reference when running a real experiment,
         # and the gravity compensated reference when running in simulation.
         self.topic_z_level = shared_ros_topics['z_level']
-        self.pub_z_level = rospy.Publisher(self.topic_z_level, Float64MultiArray, queue_size=1)
+        self.pub_z_level = rospy.Publisher(self.topic_z_level, Float32MultiArray, queue_size=1)
 
         # Create the publisher dedicated to stream the optimal trajectories and controls
         self.topic_optimization_output = shared_ros_topics['optimization_output']
-        self.pub_optimization_output = rospy.Publisher(self.topic_optimization_output, Float64MultiArray, queue_size=1)
+        self.pub_optimization_output = rospy.Publisher(self.topic_optimization_output, Float32MultiArray, queue_size=1)
 
         # Create a subscriber to listen to the current value of the shoulder pose
         self.topic_shoulder_pose = shared_ros_topics['estimated_shoulder_pose']
-        self.sub_curr_shoulder_pose = rospy.Subscriber(self.topic_shoulder_pose, Float64MultiArray, self._shoulder_pose_cb, queue_size=1)
+        self.sub_curr_shoulder_pose = rospy.Subscriber(self.topic_shoulder_pose, Float32MultiArray, self._shoulder_pose_cb, queue_size=1)
         self.flag_receiving_shoulder_pose = False       # flag indicating whether the shoulder pose is being received
 
         # Set up the structure to deal with the new thread, to allow continuous publication of the optimal trajectory and torques
@@ -295,24 +297,26 @@ class TO_module:
         self.last_cart_ee_cmd = ref_cart_point
         self.last_rotation_ee_cmd = euler_angles_cmd
 
-        # retrieve rotation matrix from filtered angles
+        # retrieve quaternion from filtered angles
         base_R_ee = R.from_euler('xyz', euler_angles_cmd)
-
-        # instantiate the homogenous matrix corresponding to the pose reference.
-        homogeneous_matrix = np.eye(4)
-        homogeneous_matrix[0:3, 3] = np.transpose(ref_cart_point)       # store the 3D cartesian position
-        homogeneous_matrix[0:3, 0:3] = base_R_ee.as_matrix()            # store the rotation information
+        quaternion_cmd = base_R_ee.as_quat(scalar_first=False)
 
         # build the message
-        message_ref = Float64MultiArray()
-        message_ref.layout.data_offset = 0
-        message_ref.data = np.reshape(homogeneous_matrix, (16,1))
+        message_ref = PoseStamped()
+        message_ref.header.stamp = rospy.Time.now()
+        message_ref.pose.position.x = ref_cart_point[0]
+        message_ref.pose.position.y = ref_cart_point[1]
+        message_ref.pose.position.z = ref_cart_point[2]
+        message_ref.pose.orientation.x = quaternion_cmd[0]
+        message_ref.pose.orientation.y = quaternion_cmd[1]
+        message_ref.pose.orientation.z = quaternion_cmd[2]
+        message_ref.pose.orientation.w = quaternion_cmd[3]
 
         # publish the message
         self.pub_trajectory.publish(message_ref)
 
         # publish also the alternative_z_ref
-        message_z = Float64MultiArray()
+        message_z = Float32MultiArray()
         message_z.layout.data_offset = 0
         message_z.data = alternative_z_ref
         self.pub_z_level.publish(message_z)
@@ -451,6 +455,7 @@ class TO_module:
         to receive new, optimized references or not.
         """
         self.flag_run_optimization = data.data
+        self.flag_pub_trajectory = data.data
 
     
     def keepOptimizing(self):
@@ -555,7 +560,7 @@ class TO_module:
             self.nlps_module.u_opt = u_opt
 
             # publish the optimal values to a topic, so that they can be recorded during experiments
-            message = Float64MultiArray()
+            message = Float32MultiArray()
             u_opt = np.concatenate((u_opt, np.atleast_2d(np.nan*np.ones((2,1)))), axis = 1)  # adding one NaN to match dimensions of other arrays
             activation = self.activation_level*self.delta_activation + self.min_activation
             message.data = np.hstack((np.vstack((x_opt, u_opt, strain_opt)).flatten(), activation))    # stack the three outputs in a single message (plus activation), and flatten it for publishing
@@ -1781,3 +1786,16 @@ class RealTimeStrainMapVisualizer:
 
     def quit(self):
         pygame.quit()
+
+
+
+def is_hsl_present():
+    lib_paths = os.environ.get("LD_LIBRARY_PATH", "").split(":")
+    for path in lib_paths:
+        if os.path.exists(os.path.join(path, "libhsl.so")):
+            return True
+    try:
+        ctypes.CDLL("libhsl.so")  # Try loading the shared library
+        return True
+    except OSError:
+        return False

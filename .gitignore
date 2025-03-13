@@ -1,13 +1,14 @@
-# exclude virtual environment
+# python virtual environment
 venv_baton/*
 
-# exclude .vscode folder
+# OpenSim log file
+opensim.log
+
+
+# VS code related stuff
 .vscode/*
 
-# exclude opensim log
-Musculoskeletal Models/opensim.log
-
-# exclude __pycache__ stuff
-__pycache__/*
+# other files
+__pycache__/
 *.pyc
-
+*.log
