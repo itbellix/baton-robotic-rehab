@@ -30,7 +30,7 @@ class Config(NamedTuple):
         return Config(
             baud_rate=460800,
             sinc_length=57,
-            chop_enable=1,
+            chop_enable=0,
             fast_enable=1,
             fir_disable=1,
             temp_compensation=0,
@@ -99,16 +99,23 @@ class BotaSerialSensor:
             self._ser.open()
             rospy.loginfo("[BotaSenseOne]Opened serial port {}".format(port))
         except:
-            raise Exception("[BotaSenseOne]Could not open port")
+            self.sensor_is_functional = False
+            rospy.logerr("[BotaSenseOne]Could not open port")
+            return
 
         if not self._ser.is_open:
-            raise Exception("[BotaSenseOne]Could not open port")
+            self.sensor_is_functional = False
+            rospy.logerr("[BotaSenseOne]Could not open port")
+            return
 
         # configuration
         if not self.setup(config):
-            rospy.loginfo("[BotaSenseOne]Failed to setup sensor")
+            rospy.logerr("[BotaSenseOne]Failed to setup sensor")
+            self.sensor_is_functional = False
             return
         rospy.loginfo("[BotaSenseOne]Sensor setup complete")
+        
+        self.sensor_is_functional = True
 
     def setup(self, config: Config):
         # Wait for streaming of data

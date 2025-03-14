@@ -77,16 +77,18 @@ if __name__ == '__main__':
 
         # quick check to determine if linear solver ma27 from HSL is available. Otherwise, we use MUMPS
         # Define a simple NLP problem for this use
-        rospy.loginfo("checking which linear solver is available")
+        print("checking which linear solver is available...")
         chosen_solver = "ma27" if utils_TO.is_hsl_present() else "mumps"
 
         if chosen_solver == "ma27":
+            print("ma27 will be used")
             opts = {'ipopt.print_level': 5,         # options for the solver (check CasADi/solver docs for changing these)
                     'print_time': 0,
                     'ipopt.tol': 1e-3,
                     'error_on_fail':1,              # to guarantee transparency if solver fails
                     'ipopt.linear_solver':'ma27'}
         elif chosen_solver == "mumps":
+            print("mumps will be used")
             opts = {'ipopt.print_level': 5,         # options for the solver (check CasADi/solver docs for changing these)
                     'print_time': 0,
                     'ipopt.tol': 1e-3,
@@ -130,6 +132,7 @@ if __name__ == '__main__':
         nlps_module = utils_TO.nlps_module()
 
         # instantiate the force/torque sensor object
+        print("Setting up force-torque sensor...")
         sensor = BotaSerialSensor(experimental_params['ft_sensor_port'])
 
         # instantiate trajectory optimization module, given the NLP problem, 

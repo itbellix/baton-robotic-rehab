@@ -127,11 +127,18 @@ class TO_module:
         self.time_begin_optimizing = None           # store the time at which the optimization request begins
 
         # Force-Torque sensor
-        self.ft_sensor = ft_sensor                       # object to handle the force-torque sensor
+        self.ft_sensor = ft_sensor                  # object to handle the force-torque sensor
+        self.use_ft_data = True                     # flag to indicate whether the force-torque sensor is used
 
         if self.ft_sensor is not None:
             if isinstance(self.ft_sensor, BotaSerialSensor):
-                self.ft_sensor.start()                       # start the sensor
+                if self.ft_sensor.sensor_is_functional:
+                    self.ft_sensor.start()              # start the sensor
+                    self.use_ft_data = True
+
+                else:
+                    self.use_ft_data = False
+                    rospy.logerr("The force-torque sensor is not functional. Zero interaction wrench will be used.")
 
             else:
                 RuntimeError("The force-torque sensor object is not of the correct type")
