@@ -191,7 +191,7 @@ class BotaSerialSensor:
                     crc16_ccitt = struct.unpack_from("H", crc16_ccitt_frame, 0)[0]
                     checksum = crc_calculator.checksum(data_frame)
                     if checksum == crc16_ccitt:
-                        rospy.loginfo("[BotaSenseOne]Frame synced")
+                        rospy.logdebug("[BotaSenseOne]Frame synced")
                         frame_synced = True
                     else:
                         self._ser.read(1)
@@ -200,7 +200,7 @@ class BotaSerialSensor:
                 frame_header = self._ser.read(1)
 
                 if frame_header != self.header:
-                    rospy.loginfo("[BotaSenseOne]Lost sync")
+                    rospy.logdebug("[BotaSenseOne]Lost sync")
                     frame_synced = False
                     break
 
@@ -210,7 +210,7 @@ class BotaSerialSensor:
                 crc16_ccitt = struct.unpack_from("H", crc16_ccitt_frame, 0)[0]
                 checksum = crc_calculator.checksum(data_frame)
                 if checksum != crc16_ccitt:
-                    rospy.loginfo("[BotaSenseOne]CRC mismatch received")
+                    rospy.logdebug("[BotaSenseOne]CRC mismatch received")
                     break
 
                 self._status = struct.unpack_from("H", data_frame, 0)[0]
