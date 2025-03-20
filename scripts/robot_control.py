@@ -305,7 +305,7 @@ class RobotControlModule:
 
             # build the message and fill it with information
             message = Float32MultiArray()
-            message.data = np.round(np.concatenate((np.array([pe, pe_dot, se, se_dot, ar, ar_dot]), xyz_ee)), 3)
+            message.data = np.round(np.concatenate((np.array([pe, pe_dot, se, se_dot, ar, ar_dot, pe_ddot, se_ddot, ar_ddot]), xyz_ee)), 3)
 
             # publish only if ROSCORE is running
             if not rospy.is_shutdown():

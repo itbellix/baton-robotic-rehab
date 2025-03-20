@@ -278,6 +278,8 @@ experimental_params['L_tot'] = l_arm + l_brace
 experimental_params['d_gh_ee_in_shoulder'] = dist_shoulder_ee
 experimental_params['elb_R_ee'] = elb_R_ee
 experimental_params['ft_sensor_port'] = "/dev/ttyUSB0"
+experimental_params['brace_mass'] = brace_mass
+experimental_params['brace_com'] = brace_com
 # -------------------------------------------------------------------------------
 # names of the ROS topics on which the shared communication between biomechanical-based optimization and robot control will happen
 shared_ros_topics = {}

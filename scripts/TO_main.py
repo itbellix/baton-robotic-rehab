@@ -30,6 +30,8 @@ from scipy.spatial.transform import Rotation as R
 import pickle
 
 from botasensone import BotaSerialSensor
+from RMRsolver import RMRsolver
+import utilsObjectives as utilsObj
 
 # import parser
 import argparse
@@ -47,6 +49,48 @@ if __name__ == '__main__':
         path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
         path_to_model = os.path.join(path_to_repo, 'Musculoskeletal Models')    # getting path to the OpenSim models
 
+        # human musculoskeletal models
+        # Note: model_name_AD is the differentiable version of model_name_osim, obtained thanks to OpenSimAD.
+        # They both capture the biometrics of our test subject (mass, inertia and lengths of the segments).
+        model_name_osim = 'right_arm_GH_full_scaled_preservingMass_muscles.osim'  # OpenSim model (should be in the path provided)
+        model_name_AD = 'right_arm_GH_full_scaled_preservingMass.casadi'  # CasADi function capturing model dynamics
+
+        # try to import the OpenSim module
+        try:
+            import opensim
+        except ImportError:
+            print("The module OpenSim could not be imported. Troubleshooting for why this is happening:")
+            print("option 1: you have not built OpenSim from source on your machine\n\t  (find instructions on how to do so at https://github.com/opensim-org/opensim-core/wiki/Build-Instructions)")
+            print("option 2: you have not activated the correct (conda) environment")
+            with_opensim = False
+            rmr_solver = None
+            print("Proceeding: no muscle activity will be estimated...")
+            
+        else:
+            with_opensim = True
+            opensim_model = opensim.Model(os.path.join(path_to_model, model_name_osim))
+
+            # select the ulna reference frame as the frame to which the interaction forces between human and robot are applied
+            ulna_body = opensim_model.updBodySet().get('ulna')
+            prescribed_force_ulna = opensim.PrescribedForce("ulna_force", ulna_body)
+            prescribed_force_ulna.setPointIsInGlobalFrame(False)
+            prescribed_force_ulna.setForceIsInGlobalFrame(False)
+            prescribed_force_ulna.setPointFunctions(opensim.Constant(0.0), opensim.Constant(0.0), opensim.Constant(0.0))     # point of application of the force in body reference frame
+            prescribed_force_ulna.setForceFunctions(opensim.Constant(0.0), opensim.Constant(0.0), opensim.Constant(0.0))
+            prescribed_force_ulna.setTorqueFunctions(opensim.Constant(0.0), opensim.Constant(0.0), opensim.Constant(0.0))
+
+            opensim_model.addForce(prescribed_force_ulna)
+
+            # instantiate the RMR solver object
+            print("OpenSim found, RMR solver will be used")
+            weights = np.concatenate((np.ones(22), 10*np.ones(3)))
+            objective = utilsObj.ActSquared(weights)
+            rmr_solver = RMRsolver(opensim_model, 
+                                   constrainActDyn=True, 
+                                   constrainGHjoint=True, 
+                                   actuatorReserveBounds=[-1e6, 1e6], 
+                                   prescribedForceIndex = [opensim_model.getForceSet().getIndex(prescribed_force_ulna)])
+
         ## PARAMETERS -----------------------------------------------------------------------------------------------
         # import the parameters for the experiment as defined in experiment_parameters.py
         from experiment_parameters import *     # this contains the experimental_params and the shared_ros_topics
@@ -58,10 +102,6 @@ if __name__ == '__main__':
         # what will define our system dynamics?
         use_casadi_function = True          # discriminates whether to use pre-saved CasADi function (through OpenSimAD), 
                                             # or numerical CasADi+OpenSim callback
-        model_name_osim = 'right_arm_GH_full_scaled_preservingMass.osim'  # OpenSim model (should be in the path provided)
-        model_name_AD = 'right_arm_GH_full_scaled_preservingMass.casadi'  # CasADi function capturing model dynamics 
-        # Note: model_name_AD is the differentiable version of model_name_osim, obtained thanks to OpenSimAD.
-        # They both capture the biometrics of our test subject (mass, inertia and lengths of the segments).
 
         # choose collocation scheme for approximating the system dynamics
         collocation_scheme = 'legendre'         # collocation points
@@ -104,18 +144,7 @@ if __name__ == '__main__':
 
         if experiment == 2 or experiment == 3:
             opts['ipopt.max_iter'] = 100    # reduce the number of iterations, to restart the optimization from new state
-        # -----------------------------------------------------------------------------
-        # try to import the OpenSim module
-        try:
-            import opensim
-        except ImportError:
-            print("The module OpenSim could not be imported. Troubleshooting for why this is happening:")
-            print("option 1: you have not built OpenSim from source on your machine\n\t  (find instructions on how to do so at https://github.com/opensim-org/opensim-core/wiki/Build-Instructions)")
-            print("option 2: you have not activated the correct (conda) environment")
-            with_opensim = False
-        else:
-            with_opensim = True
-
+        # ----------------------------------------------------------------------------------------------------------------
         # Declare model variables
         # The model represents a right arm, whose only degrees of freedom are the ones of the glenohumeral (GH) joint,
         # based on the thoracoscapular shoulder model from https://doi.org/10.3389/fnbot.2019.00090
@@ -143,14 +172,12 @@ if __name__ == '__main__':
                                     with_opensim = with_opensim,
                                     simulation = simulation,
                                     speed_estimate = speed_estimate,
-                                    ft_sensor=sensor)
+                                    ft_sensor=sensor,
+                                    rmr_solver = rmr_solver)
         
         # if the sensor is connected, specify load parameters coming from the brace mounted on it
         if sensor.is_functional:
             to_module.setSensorLoadParameters(experimental_params['brace_mass'], experimental_params['brace_com'])
-
-        # set the OpenSim model representing the subject
-        to_module.setOpenSimModel(path_to_model=path_to_model, model_name=model_name_osim)
 
         # define how the dynamics of the model will be provided to the optimizer
         if use_casadi_function: 

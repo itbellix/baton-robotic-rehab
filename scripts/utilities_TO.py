@@ -34,7 +34,7 @@ class TO_module:
     """
     Trajectory Optimization module.
     """
-    def __init__(self, nlps, shared_ros_topics, rate=200, with_opensim = False, simulation = 'true', speed_estimate:Bool=False, ft_sensor=None):
+    def __init__(self, nlps, shared_ros_topics, rate=200, with_opensim = False, simulation = 'true', speed_estimate:Bool=False, ft_sensor=None, rmr_solver=None):
         """"
         The TO_module requires a NLP object when instantiated
         """
@@ -43,7 +43,6 @@ class TO_module:
 
         # Parameters
         self.with_opensim = with_opensim            # flag to indicate whether OpenSim could be imported (used mostly for visualization)
-        self.opensim_model = None                   # musculoskeletal model 
 
         self.strainmap_current = None               # strain map corresponding to the current model state
 
@@ -55,16 +54,10 @@ class TO_module:
                                                     # For the case of our shoulder rehabilitation, it will be ["plane_elev", "shoulder_elev", "axial_rot"]
 
         self.state_values_current = None            # The current value of the variables defining the state
+        self.state_dot_current = None               # The current value of the time derivatives of the state variables
         self.speed_estimate = speed_estimate        # Are estimated velocities of the model computed?
                                                     # False: quasi_static assumption, True: updated through measurements
-        
-        # parameters regarding the muscle activation
-        self.varying_activation = False             # initialize the module assuming that the activation will not change
-        self.activation_level = 0                   # level of activation of the muscles whose strain we are considering
-                                                    # this is an index 
-        self.max_activation = 1                     # maximum activation considered (defaulted to 1)
-        self.min_activation = 0                     # minimum activation considered (defaulted to 0)
-        self.delta_activation = 0.005               # resolution on the activation value that the strain map captures
+
 
         self.x_opt = None                           # Optimal trajectory in shoulder state. It consists in a sequence of points (or a single point)
                                                     # that will be transformed in robot coordinates and tracked by the robot.
@@ -75,6 +68,18 @@ class TO_module:
         self.nlp_count = 0                          # keeps track of the amount of times the NLP is solved
         self.avg_nlp_time = 0
         self.failed_count = 0
+
+        # parameters regarding the muscle activation
+        self.rmr_solver = rmr_solver                # instance of the RMR solver for estimating muscle activations in real time
+        self.varying_activation = False             # initialize the module assuming that the activation will not change
+        self.activation_level = 0                   # level of activation of the muscles whose strain we are considering
+                                                    # this is an index 
+        self.max_activation = 1                     # maximum activation considered (defaulted to 1)
+        self.min_activation = 0                     # minimum activation considered (defaulted to 0)
+        self.delta_activation = 0.005               # resolution on the activation value that the strain map captures
+
+        self.rmr_thread = None                      # thread that will run the RMR solver
+
 
         # MPC optimal map generated with CasADi opti.to_function() for iteratively solving the same
         # NLP with different parameter values
@@ -146,18 +151,6 @@ class TO_module:
 
             else:
                 RuntimeError("The force-torque sensor object is not of the correct type")
-
-    def setOpenSimModel(self, path_to_model, model_name):
-        """"
-        This function is used to set the OpenSim model that will be considered in the 
-        strain-map-based optimization. It is used to define how the system state evolves
-        given user-provided inputs
-        
-        INPUTS: 
-            - path_to_model: absolute path to where the model is stored
-            - model_name: name of the OpenSim model to be considered
-        """
-        self.opensim_model = osim.Model(os.path.join(path_to_model, model_name)) 
 
 
     def createMPCfunctionWithoutInitialGuesses(self):
@@ -385,6 +378,11 @@ class TO_module:
             self.flag_pub_trajectory = True     # update flag
             self.publish_thread.start()         # start the publishing thread
 
+            # start the thread dedicated to the estimation of the muscle activation as well
+            self.rmr_thread = threading.Thread(target=self.estimate_muscle_activation, args=())   # creating the thread
+            self.rmr_thread.daemon = True   # this allows to terminate the thread when the main program ends
+            self.rmr_thread.start()
+
 
     def _shoulder_pose_cb(self, data):
         """
@@ -395,6 +393,7 @@ class TO_module:
 
         # retrieve the current state as estimated on the robot's side
         self.state_values_current = np.array(data.data[0:6])        # update current pose
+        self.state_dot_current = np.array([data.data[i] for i in [1, 6, 3, 7, 5, 8]])   # update current derivative of the pose
 
         if not self.speed_estimate:                                 # choose whether we use the velocity estimate or not
             self.state_values_current[1::2] = 0
@@ -629,6 +628,38 @@ class TO_module:
                         self.publishCartRef(cmd_shoulder_pose, cmd_torques, p_gh_in_base, rot_ee_in_base_0, dist_shoulder_ee, adjust_offset = False)
 
             rate.sleep()
+
+
+    def estimate_muscle_activation(self):
+        """
+        This function estimates the current activation level of the human shoulder muscles, based on:
+        - a personalized biomechanical model
+        - the current position, velocity and accelerations of the subject
+        - the interaction wrenches measured by the force-torque sensor
+        """
+        rate = rospy.Rate(50)
+        while not rospy.is_shutdown():
+            # retrieve position, velocity and acceleration of the shoulder DoFs (order is always pe, se, ar)
+            position_sh = self.state_values_current[0::2]
+            velocity_sh = self.state_values_current[1::2]
+            acceleration_sh = self.state_dot_current[1::2]
+
+            if self.ft_sensor.is_functional:
+                # retrieve the interaction wrenches from the force-torque sensor
+                # TODO: the fixed offset of the brace should be removed
+                interaction_wrench = np.array([self.ft_sensor.current_reading.fx,
+                                               self.ft_sensor.current_reading.fy,
+                                               self.ft_sensor.current_reading.fz,
+                                               self.ft_sensor.current_reading.mx,
+                                               self.ft_sensor.current_reading.my,
+                                               self.ft_sensor.current_reading.mz])
+            else:
+                interaction_wrench = np.zeros(6)
+
+            # estimate the muscle activation level for all the muscles in the model
+            current_activation = self.rmr_solver.solve(time.time(), position_sh, velocity_sh, acceleration_sh, interaction_wrench)
+            rate.sleep()
+
 
 
     def setOptimalReferenceToCurrentPose(self):
