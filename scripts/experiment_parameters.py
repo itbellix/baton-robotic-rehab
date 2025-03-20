@@ -36,11 +36,18 @@ setup = 'newLab_facingRobot'        # list of setups: 'OldLab' (configuration th
 #   * base_R_shoulder: rotation that expresses the orientation of the human shoulder frame in the 
 #                      base frame of the robot  
 #   * position_gh_in_base: position of the center of the shoulder frame (GH joint) in the base frame [m]
+#   * ar_offset: offset to be added to the ar coordinate, to account for different mounting orientations of the brace
+#                on the robot end-effector (it is 0 when the forearm is parallel to the EE x axis)
+#   * brace_mass: mass of the brace, as determined by the Kuka Sunrise load identification [kg]
+#   * brace_com: position of the center of mass of the brace, as determined by the Kuka Sunrise load identification [m]
+#                (expressed in the frame of the robot end-effector)                  
 
+l_brace = 0.02          # thickness of the brace [m]
+brace_mass = 0.53       # mass of the brace [kg]
+brace_com = np.array([0.0159, -0.004, 0.0677])  # position of the center of mass of the brace [m]
 
 if subject=='subject1':
     l_arm = 0.32            # length of the subject's right arm, from the center of the glenohumeral (GH) joint to the elbow [m]
-    l_brace = 0.02          # thickness of the brace [m]
 
 
 if setup=='newLab_facingRobot':                  

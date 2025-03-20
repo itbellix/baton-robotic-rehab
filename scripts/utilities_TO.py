@@ -28,7 +28,7 @@ from geometry_msgs.msg import PoseStamped
 
 from experiment_parameters import *     # this contains the experimental_params and the shared_ros_topics
 
-from botasensone import BotaSerialSensor, Config, Reading
+from botasensone import BotaSerialSensor
 
 class TO_module:
     """
@@ -132,9 +132,13 @@ class TO_module:
 
         if self.ft_sensor is not None:
             if isinstance(self.ft_sensor, BotaSerialSensor):
-                if self.ft_sensor.sensor_is_functional:
+                if self.ft_sensor.is_functional:
                     self.ft_sensor.start()              # start the sensor
+                    self.ft_sensor.calibrate()          # calibrate the sensor
                     self.use_ft_data = True
+
+                    self.sensor_load_mass = 0           # mass of the load
+                    self.sensor_load_com = np.zeros(3)  # center of mass of the load (in the sensor frame)
 
                 else:
                     self.use_ft_data = False
@@ -677,6 +681,14 @@ class TO_module:
             print("--------------------------------------------------------\n")
 
         return stats
+    
+    def setSensorLoadParameters(self, mass, com):
+        """
+        This function allows to set the mass and center of mass of the load that is being handled by the force-torque
+        sensor. The mass is expressed in kg, while the center of mass is expressed in meters.
+        """
+        self.sensor_load_mass = mass
+        self.sensor_load_com = com
 
 
 class nlps_module():

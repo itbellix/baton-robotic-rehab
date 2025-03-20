@@ -132,8 +132,8 @@ if __name__ == '__main__':
         nlps_module = utils_TO.nlps_module()
 
         # instantiate the force/torque sensor object
-        print("Setting up force-torque sensor...")
-        sensor = BotaSerialSensor(experimental_params['ft_sensor_port'])
+        print("Connecting force-torque sensor...")
+        sensor = BotaSerialSensor(experimental_params['ft_sensor_port'], n_readings_calib=1000)
 
         # instantiate trajectory optimization module, given the NLP problem, 
         # the shared ros topics (defined in experiment_parameters.py), and setting debugging options
@@ -144,6 +144,10 @@ if __name__ == '__main__':
                                     simulation = simulation,
                                     speed_estimate = speed_estimate,
                                     ft_sensor=sensor)
+        
+        # if the sensor is connected, specify load parameters coming from the brace mounted on it
+        if sensor.is_functional:
+            to_module.setSensorLoadParameters(experimental_params['brace_mass'], experimental_params['brace_com'])
 
         # set the OpenSim model representing the subject
         to_module.setOpenSimModel(path_to_model=path_to_model, model_name=model_name_osim)
