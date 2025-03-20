@@ -155,10 +155,6 @@ class RobotControlModule:
         # store the experimental parameters
         self.exp_prms = experimental_params
 
-        # create a publisher to interface with the RMR solver
-        self.topic_rmr = '/kukadat'
-        self.pub_rmr_data = rospy.Publisher(self.topic_rmr, Float32MultiArray, queue_size = 1)
-
 
     def _callback_ee_twist(self,data):
         """
@@ -311,13 +307,9 @@ class RobotControlModule:
             message = Float32MultiArray()
             message.data = np.round(np.concatenate((np.array([pe, pe_dot, se, se_dot, ar, ar_dot]), xyz_ee)), 3)
 
-            message_rmr = Float32MultiArray()
-            message_rmr.data = np.round(np.array([pe, se, ar, pe_dot, se_dot, ar_dot, pe_ddot, se_ddot, ar_ddot, 0, 0, 0, time_now]), 3)
-
             # publish only if ROSCORE is running
             if not rospy.is_shutdown():
                 self.pub_shoulder_pose.publish(message)
-                self.pub_rmr_data.publish(message_rmr)
 
 
     def _callback_ee_optimal_pose(self,data):
