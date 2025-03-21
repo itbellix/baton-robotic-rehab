@@ -441,13 +441,13 @@ class RMRsolver:
 
         constraintViolation = constrAcc_A.dot(activation) - constrAcc_b
         constraintViolationRelative = constraintViolation/constrAcc_b/xDeltaUsed
-        # print(f"Acceletaion constraint violation: {constraintViolationRelative}")
-        print("Acceleration constraint violation: (>=1: no violation)")
-        for i in range(len(constraintViolationRelative)):
-            print(f"{constraintViolationRelative[i]:5.2f}")
 
         # Print solver log if enabled
         if self.settings['solveInfo']:
+            print("Acceleration constraint violation: (>=1: no violation)")
+            for i in range(len(constraintViolationRelative)):
+                print(f"{constraintViolationRelative[i]:5.2f}")
+                
             if result.success:
                 print(">>> INFO: Optimization succeeded:")
             else:
