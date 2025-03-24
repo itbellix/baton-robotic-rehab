@@ -21,7 +21,7 @@ code_path = os.path.dirname(os.path.realpath(__file__))     # getting path to wh
 path_to_repo = os.path.join(code_path, '..')                # getting path to the repository
 
 # set the frequency to check for new message and execute loops
-loop_frequency = 20    # [Hz]
+loop_frequency = 50    # [Hz]
 
 # select here with which setup/subject we are working
 subject = 'subject1'       # list of available subjects: subject1
@@ -290,4 +290,5 @@ shared_ros_topics['request_reference'] = 'request_reference'
 shared_ros_topics['optimization_output'] = 'optimization_output'
 shared_ros_topics['z_level'] = 'uncompensated_z_ref'
 shared_ros_topics['ft_sensor_data'] = 'ft_sensor_data'
-                                                         
+shared_ros_topics['muscle_activation'] = 'estimated_muscle_activation'
+shared_ros_topics['compensated_wrench'] = 'compensated_wrench'
