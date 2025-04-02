@@ -43,12 +43,13 @@ setup = 'newLab_facingRobot'        # list of setups: 'OldLab' (configuration th
 #                (expressed in the frame of the robot end-effector)                  
 
 l_brace = 0.02          # thickness of the brace [m]
+l_sensor = 0.035         # thickness of the sensor [m]
 brace_mass = 0.53       # mass of the brace [kg]
 brace_com = np.array([0.0159, -0.004, 0.0677])  # position of the center of mass of the brace [m]
 
 if subject=='subject1':
     l_arm = 0.32            # length of the subject's right arm, from the center of the glenohumeral (GH) joint to the elbow [m]
-
+    L_tot = l_arm + l_brace + l_sensor # total length of the arm + brace + sensor [m]
 
 if setup=='newLab_facingRobot':                  
     # This is the setup used now that the KUKA7 is mounted on the table
@@ -277,14 +278,14 @@ if experiment == 3: # TUNING OF OCP COST FUNCTION WEIGHTS (Fig. 4 in the paper)
 
 # -------------------------------------------------------------------------------
 # experimental parameters used by both the TO and the robot control modules
-dist_shoulder_ee = np.array([0, -(l_arm+l_brace), 0])   # evaluate the distance between GH center and robot ee, in shoulder frame 
+dist_shoulder_ee = np.array([0, -L_tot, 0])   # evaluate the distance between GH center and robot ee, in shoulder frame 
                                                         # (once the subject is wearing the brace)
 elb_R_ee = R.from_euler('x', -np.pi/2, degrees=False)   # rotation matrix expressing the orientation of the ee in the elbow frame
 
 experimental_params = {}
 experimental_params['p_gh_in_base'] = position_gh_in_base
 experimental_params['base_R_shoulder'] = base_R_shoulder
-experimental_params['L_tot'] = l_arm + l_brace
+experimental_params['L_tot'] = L_tot
 experimental_params['d_gh_ee_in_shoulder'] = dist_shoulder_ee
 experimental_params['elb_R_ee'] = elb_R_ee
 experimental_params['ft_sensor_port'] = "/dev/ttyUSB0"
