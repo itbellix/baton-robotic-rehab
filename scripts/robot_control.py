@@ -204,8 +204,7 @@ class RobotControlModule:
         
         # check if the robot has already reached its desired pose and if at least one twist message has been received 
         # If so, estimate and publish human (shoulder) poses
-        # if self.initial_pose_reached and self.ee_twist_curr is not None:
-        if self.ee_twist_curr is not None:   # TODO: only for debug, condition above is correct
+        if self.initial_pose_reached and self.ee_twist_curr is not None:
             R_ee = self.ee_pose_curr.R    # retrieve the rotation matrix defining orientation of EE frame
             sh_R_elb = np.transpose(experimental_params['base_R_shoulder'].as_matrix())@R_ee@np.transpose(experimental_params['elb_R_ee'].as_matrix())
 
@@ -234,7 +233,7 @@ class RobotControlModule:
 
             # once the previous angles have been retrieved, use the orientation of the EE to find ar
             # (we assume that the EE orientation points towards the center of the shoulder for this)
-            ar = np.arctan2(-sh_R_elb[1,0], sh_R_elb[1,2]/np.sin(se)) + ar_offset
+            ar = np.arctan2(-sh_R_elb[1,0], sh_R_elb[1,2]/np.sin(se)) + experimental_params['ar_offset']
 
             # 2. we estimate the coordinate velocities (here the robot and the human are interacting as a geared mechanism)
             # 2.1 estimate the velocity along the plane of elevation

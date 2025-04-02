@@ -238,12 +238,10 @@ if __name__ == '__main__':
         # Publish the initial position of the KUKA end-effector, according to the initial shoulder state
         # This code is blocking until an acknowledgement is received, indicating that the initial pose has been successfully
         # received by the RobotControlModule
-        # to_module.publishInitialPoseAsCartRef(shoulder_pose_ref = x_0[0::2], 
-        #                                     position_gh_in_base = experimental_params['p_gh_in_base'], 
-        #                                     base_R_sh = experimental_params['base_R_shoulder'], 
-        #                                     dist_gh_elbow = experimental_params['d_gh_ee_in_shoulder'])
-
-        # TODO: uncomment above (now debugging)
+        to_module.publishInitialPoseAsCartRef(shoulder_pose_ref = x_0[0::2], 
+                                            position_gh_in_base = experimental_params['p_gh_in_base'], 
+                                            base_R_sh = experimental_params['base_R_shoulder'], 
+                                            dist_gh_elbow = experimental_params['d_gh_ee_in_shoulder'])
 
         # Wait until the robot has reached the required position, and proceed only when the current shoulder pose is published
         to_module.waitForShoulderState()

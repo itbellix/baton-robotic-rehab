@@ -156,6 +156,7 @@ class TO_module:
             my_load = fz_load * self.sensor_load_com[0] - fx_load * self.sensor_load_com[2]  # moment in the y direction
             mz_load = fx_load * self.sensor_load_com[1] - fy_load * self.sensor_load_com[0]  # moment in the z direction
             self.ft_sensor.set_load_effect(np.array((fx_load, fy_load, fz_load, mx_load, my_load, mz_load)))
+            rospy.loginfo("ft load effect set to: %s", str((fx_load, fy_load, fz_load, mx_load, my_load, mz_load)))
 
             if isinstance(self.ft_sensor, BotaSerialSensor):
                 if self.ft_sensor.is_functional:
@@ -483,12 +484,12 @@ class TO_module:
         weight_load_in_world = self.gravity_in_world*self.sensor_load_mass    # compute the gravity force in the world frame
 
         # express load into sensor frame
-        sensor_R_world = self.sensor_R_ee * R.from_quat(self.current_ee_orientation, scalar_first=False)
+        sensor_R_world = self.sensor_R_ee * R.from_quat(self.current_ee_orientation, scalar_first=False).inv()
         weight_in_sensor = np.matmul(sensor_R_world.as_matrix(), weight_load_in_world)
         mx_load = weight_in_sensor[1]*self.sensor_load_com[2] - weight_in_sensor[2]*self.sensor_load_com[1]
         my_load = weight_in_sensor[2]*self.sensor_load_com[0] - weight_in_sensor[0]*self.sensor_load_com[2]
         mz_load = weight_in_sensor[0]*self.sensor_load_com[1] - weight_in_sensor[1]*self.sensor_load_com[0]
-        self.ft_sensor.set_load_effect(np.array(weight_in_sensor[0], weight_in_sensor[1], weight_in_sensor[2], mx_load, my_load, mz_load))
+        self.ft_sensor.set_load_effect(np.array((weight_in_sensor[0], weight_in_sensor[1], weight_in_sensor[2], mx_load, my_load, mz_load)))
         
         # set up a logic that allows to start and update the visualization of the current strain map at a given frequency
         # We set this fixed frequency to be 10 Hz
