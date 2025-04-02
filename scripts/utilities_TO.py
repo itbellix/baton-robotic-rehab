@@ -38,6 +38,8 @@ class TO_module:
         """"
         The TO_module requires a NLP object when instantiated
         """
+        self.gravity_in_world = np.array([0, 0, -9.81])      # gravity vector expressed in the world frame 
+
         # set debug level
         self.simulation = simulation
 
@@ -85,8 +87,9 @@ class TO_module:
         # NLP with different parameter values
         self.MPC_iter = None                        # CasADi function that maps initial state to the optimal control
 
-        # robot-related variables to correct for inaccuracies in the estimation of the shoulder state
-        self.current_ee_pose = None
+        # current estimate of the pose of the robotic end-effector 
+        self.current_ee_pose = None         # XYZ cartesian position in robot base frame
+        self.current_ee_orientation = None  # quaternion orientation of the robot end-effector (scalar last)
 
         # filter the reference that is generated, to avoid noise injection from the human-pose estimator
         self.last_cart_ee_cmd = np.zeros(3)     # store the last command sent to the robot (position)
@@ -104,6 +107,10 @@ class TO_module:
         self.topic_opt_traj = shared_ros_topics['optimal_cartesian_ref_ee']
         self.pub_trajectory = rospy.Publisher(self.topic_opt_traj, PoseStamped, queue_size=1)
         self.flag_pub_trajectory = False    # flag to check if trajectory is being published (default: False = no publishing)
+
+        # create a publisher for the estimated muscle activations and for the compensated interaction forces
+        self.pub_activation = rospy.Publisher(shared_ros_topics['muscle_activation'], Float32MultiArray, queue_size=1)
+        self.pub_compensated_wrench = rospy.Publisher(shared_ros_topics['compensated_wrench'], Float32MultiArray, queue_size=1)
         
         # Create the publisher for the unused z_reference
         # It will publish the uncompensated z reference when running a real experiment,
@@ -133,20 +140,30 @@ class TO_module:
 
         # Force-Torque sensor
         self.ft_sensor = ft_sensor                  # object to handle the force-torque sensor
-        self.use_ft_data = True                     # flag to indicate whether the force-torque sensor is used
+        self.sensor_R_ee = experimental_params['sensor_R_ee']   # rotation matrix from the end effector frame to sensor frame
 
         if self.ft_sensor is not None:
+            # specify the sensor load parameters (coming from the brace mounted on it)
+            self.sensor_load_mass = experimental_params['brace_mass']   # mass of the load
+            self.sensor_load_com = experimental_params['brace_com']     # center of mass of the load (in the sensor frame)
+
+            # we calibrate when the sensor's frame is aligned with the robot's world frame
+            # (we know precisely the effects of the load in this configuration)
+            fx_load = self.sensor_load_mass * self.gravity_in_world[0]  # force in the x direction
+            fy_load = self.sensor_load_mass * self.gravity_in_world[1]  # force in the y direction
+            fz_load = self.sensor_load_mass * self.gravity_in_world[2]  # force in the z direction
+            mx_load = fy_load * self.sensor_load_com[2] - fz_load * self.sensor_load_com[1]  # moment in the x direction
+            my_load = fz_load * self.sensor_load_com[0] - fx_load * self.sensor_load_com[2]  # moment in the y direction
+            mz_load = fx_load * self.sensor_load_com[1] - fy_load * self.sensor_load_com[0]  # moment in the z direction
+            self.ft_sensor.set_load_effect(np.array((fx_load, fy_load, fz_load, mx_load, my_load, mz_load)))
+
             if isinstance(self.ft_sensor, BotaSerialSensor):
                 if self.ft_sensor.is_functional:
-                    self.ft_sensor.start()              # start the sensor
-                    self.ft_sensor.calibrate()          # calibrate the sensor
-                    self.use_ft_data = True
-
-                    self.sensor_load_mass = 0           # mass of the load
-                    self.sensor_load_com = np.zeros(3)  # center of mass of the load (in the sensor frame)
+                    self.use_ft_data = self.ft_sensor.start()           # start the sensor, and set flag to indicate that force-torque sensor is used
+                    self.ft_sensor.calibrate()                          # calibrate the sensor
 
                 else:
-                    self.use_ft_data = False
+                    self.use_ft_data = False            # flag to indicate whether the force-torque sensor is used
                     rospy.logerr("The force-torque sensor is not functional. Zero interaction wrench will be used.")
 
             else:
@@ -403,7 +420,8 @@ class TO_module:
         if experiment == 3 and self.time_begin_optimizing is not None:
             self.state_values_current[4] = np.arcsin(np.sin((time_now-self.time_begin_optimizing)/6))/2
 
-        self.current_ee_pose = np.array(data.data[-3:])   # update estimate of where the robot is now (last 3 elements)
+        self.current_ee_pose = np.array(data.data[-3:])             # update estimate of cartesian position of the robot EE
+        self.current_ee_orientation = np.array(data.data[-7:-3])    # update estimate of orientation of the robot EE (as a quaternion, scalar last)
 
         # after receiving the values, check on which strain map we are moving
         # we need to approximate the value of the axial rotation for this.
@@ -460,6 +478,17 @@ class TO_module:
                 p3 = np.array([0, 0, 0, 1, 1, 0])
                 params_gaussians = np.hstack((p1, p2, p3))
                 self.nlps_module.setParametersStrainMap(3, params_gaussians, rounded_ar, None)
+
+        # we also need to update the load effect of the sensor, based on the current EE pose
+        weight_load_in_world = self.gravity_in_world*self.sensor_load_mass    # compute the gravity force in the world frame
+
+        # express load into sensor frame
+        sensor_R_world = self.sensor_R_ee * R.from_quat(self.current_ee_orientation, scalar_first=False)
+        weight_in_sensor = np.matmul(sensor_R_world.as_matrix(), weight_load_in_world)
+        mx_load = weight_in_sensor[1]*self.sensor_load_com[2] - weight_in_sensor[2]*self.sensor_load_com[1]
+        my_load = weight_in_sensor[2]*self.sensor_load_com[0] - weight_in_sensor[0]*self.sensor_load_com[2]
+        mz_load = weight_in_sensor[0]*self.sensor_load_com[1] - weight_in_sensor[1]*self.sensor_load_com[0]
+        self.ft_sensor.set_load_effect(np.array(weight_in_sensor[0], weight_in_sensor[1], weight_in_sensor[2], mx_load, my_load, mz_load))
         
         # set up a logic that allows to start and update the visualization of the current strain map at a given frequency
         # We set this fixed frequency to be 10 Hz
@@ -637,29 +666,40 @@ class TO_module:
         - the current position, velocity and accelerations of the subject
         - the interaction wrenches measured by the force-torque sensor
         """
-        rate = rospy.Rate(50)
         while not rospy.is_shutdown():
-            # retrieve position, velocity and acceleration of the shoulder DoFs (order is always pe, se, ar)
-            position_sh = self.state_values_current[0::2]
-            velocity_sh = self.state_values_current[1::2]
-            acceleration_sh = self.state_dot_current[1::2]
-
-            if self.ft_sensor.is_functional:
+            if self.flag_receiving_shoulder_pose:
+                # retrieve position, velocity and acceleration of the shoulder DoFs (order is always pe, se, ar)
+                position_sh = self.state_values_current[0::2]
+                velocity_sh = self.state_values_current[1::2]
+                acceleration_sh = self.state_dot_current[1::2]
+                
                 # retrieve the interaction wrenches from the force-torque sensor
-                # TODO: the fixed offset of the brace should be removed
-                interaction_wrench = np.array([self.ft_sensor.current_reading.fx,
-                                               self.ft_sensor.current_reading.fy,
-                                               self.ft_sensor.current_reading.fz,
-                                               self.ft_sensor.current_reading.mx,
-                                               self.ft_sensor.current_reading.my,
-                                               self.ft_sensor.current_reading.mz])
-            else:
-                interaction_wrench = np.zeros(6)
+                if self.ft_sensor.is_functional:
+                    # get the interaction wrench from the force-torque sensor
+                    interaction_wrench = np.array([self.ft_sensor.current_reading.fx,
+                                                self.ft_sensor.current_reading.fy,
+                                                self.ft_sensor.current_reading.fz,
+                                                self.ft_sensor.current_reading.mx,
+                                                self.ft_sensor.current_reading.my,
+                                                self.ft_sensor.current_reading.mz])
+                else:
+                    interaction_wrench = np.zeros(6)
+                # TODO: this is still work in progress
+                # estimate the muscle activation level for all the muscles in the model
+                current_activation, _, info = self.rmr_solver.solve(time.time(), position_sh, velocity_sh, acceleration_sh, interaction_wrench)
 
-            # estimate the muscle activation level for all the muscles in the model
-            current_activation = self.rmr_solver.solve(time.time(), position_sh, velocity_sh, acceleration_sh, interaction_wrench)
-            rate.sleep()
+                # publish the activation level (for debugging and logging)
+                message = Float32MultiArray()
+                message.data = current_activation
+                self.pub_activation.publish(message)
 
+                # publish the interaction wrenches after gravity compensation (for debugging and logging)
+                message = Float32MultiArray()
+                message.data = interaction_wrench
+                self.pub_compensated_wrench.publish(message)
+
+            # sleep for a while
+            self.ros_rate.sleep()
 
 
     def setOptimalReferenceToCurrentPose(self):
@@ -980,7 +1020,7 @@ class nlps_module():
             # strainmap_sym = ca.Function('strainmap_sym', [self.x], [strainmap], {"allow_free":True})
             strainmap_sym = ca.Function('strainmap_sym', [self.x, p_g1, p_g2, p_g3], [strainmap])
 
-            # save the symbolic strain map for some debugging (TODO: remove once things work)
+            # save the symbolic strain map for debugging
             self.strainmap_sym = strainmap_sym
 
         #  "Lift" initial conditions
@@ -1014,7 +1054,7 @@ class nlps_module():
             # optimization variable (state) at collocation points
             Xc = self.opti.variable(self.dim_x, self.pol_order)
 
-            # evaluate ODE right-hand-side at collocation points (TODO: this now depends from the number of coordinates!)
+            # evaluate ODE right-hand-side at collocation points (NOTE: this now depends from the number of coordinates!)
             ode_tuple = self.sys_dynamics(Xc[0,:],      # theta at collocation points
                                           Xc[1,:],      # theta_dot " " "
                                           Xc[2,:],      # psi " " "
@@ -1107,7 +1147,7 @@ class nlps_module():
         if self.num_gaussians>0:
             self.params_list.extend(tmp_param_list)     # append at the end the parameters for the strains
 
-            self.opti.set_value(p_g1, self.all_params_gaussians[0:6])   # TODO: hardcoded!
+            self.opti.set_value(p_g1, self.all_params_gaussians[0:6])   # NOTE: hardcoded!
             self.opti.set_value(p_g2, self.all_params_gaussians[6:12])
             self.opti.set_value(p_g3, self.all_params_gaussians[12:18])
 
@@ -1191,7 +1231,7 @@ class nlps_module():
             # strainmap_sym = ca.Function('strainmap_sym', [self.x], [strainmap], {"allow_free":True})
             strainmap_sym = ca.Function('strainmap_sym', [self.x, p_g1, p_g2, p_g3], [strainmap])
 
-            # save the symbolic strain map for some debugging (TODO: remove once things work)
+            # save the symbolic strain map for some debugging
             self.strainmap_sym = strainmap_sym
 
         #  "Lift" initial conditions
@@ -1317,7 +1357,7 @@ class nlps_module():
         if self.num_gaussians>0:
             self.params_list.extend(tmp_param_list)     # append at the end the parameters for the strains
 
-            self.opti.set_value(p_g1, self.all_params_gaussians[0:6])   # TODO: hardcoded!
+            self.opti.set_value(p_g1, self.all_params_gaussians[0:6])   # NOTE: hardcoded!
             self.opti.set_value(p_g2, self.all_params_gaussians[6:12])
             self.opti.set_value(p_g3, self.all_params_gaussians[12:18])
 

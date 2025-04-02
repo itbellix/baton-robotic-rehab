@@ -100,28 +100,28 @@ class BotaSerialSensor:
         self.reading_message.layout.data_offset = 0
         self.n_readings_calib = n_readings_calib      # number of readings to calibrate the sensor
         self.offset = np.zeros(6)                     # offset to calibrate the sensor data
+        self.load_effect = np.zeros(6)                # load effect on the sensor data
+        self.is_functional = False                    # flag to check if the sensor is functional (default: False)
 
         try:
             self._ser.open()
             rospy.loginfo("[BotaSenseOne]Opened serial port {}".format(port))
         except:
-            self.is_functional = False
             rospy.logerr("[BotaSenseOne]Could not open port")
             return
 
         if not self._ser.is_open:
-            self.is_functional = False
             rospy.logerr("[BotaSenseOne]Could not open port")
             return
 
         # configuration
         if not self.setup(config):
             rospy.logerr("[BotaSenseOne]Failed to setup sensor")
-            self.is_functional = False
             return
         rospy.loginfo("[BotaSenseOne]Sensor setup complete")
         
         self.is_functional = True
+
 
     def setup(self, config: Config):
         # Wait for streaming of data
@@ -215,14 +215,15 @@ class BotaSerialSensor:
 
                 self._status = struct.unpack_from("H", data_frame, 0)[0]
 
-                # The current reading is is saved after compensating for the offset
+                # The current reading is is saved 
+                # Note that static sensor's offset and load effect are already subtracted from the raw data
                 self.current_reading = Reading(
-                    fx=struct.unpack_from("f", data_frame, 2)[0] - self.offset[0],
-                    fy=struct.unpack_from("f", data_frame, 6)[0] - self.offset[1],
-                    fz=struct.unpack_from("f", data_frame, 10)[0] - self.offset[2],
-                    mx=struct.unpack_from("f", data_frame, 14)[0] - self.offset[3],
-                    my=struct.unpack_from("f", data_frame, 18)[0] - self.offset[4],
-                    mz=struct.unpack_from("f", data_frame, 22)[0] - self.offset[5],
+                    fx=struct.unpack_from("f", data_frame, 2)[0] - self.offset[0] - self.load_effect[0],
+                    fy=struct.unpack_from("f", data_frame, 6)[0] - self.offset[1] - self.load_effect[1],
+                    fz=struct.unpack_from("f", data_frame, 10)[0] - self.offset[2] - self.load_effect[2],
+                    mx=struct.unpack_from("f", data_frame, 14)[0] - self.offset[3] - self.load_effect[3],
+                    my=struct.unpack_from("f", data_frame, 18)[0] - self.offset[4] - self.load_effect[4],
+                    mz=struct.unpack_from("f", data_frame, 22)[0] - self.offset[5] - self.load_effect[5],
                     timestamp=struct.unpack_from("I", data_frame, 26)[0] * 1e-6,
                     temperature=struct.unpack_from("f", data_frame, 30)[0],
                 )
@@ -257,8 +258,14 @@ class BotaSerialSensor:
                     self.previous_reading_filt = self.current_reading 
 
     def start(self):
-        self.proc_thread = threading.Thread(target=self._processdata_thread)
-        self.proc_thread.start()
+        # start the thread that processes the data
+        try:
+            self.proc_thread = threading.Thread(target=self._processdata_thread)
+            self.proc_thread.start()
+            return True
+        except Exception as e:
+            rospy.logerr("[BotaSenseOne]Failed to start thread: {}".format(e))
+            return False
 
 
     def calibrate(self):
@@ -271,6 +278,12 @@ class BotaSerialSensor:
             time.sleep(0.01)
         self.offset = np.mean(readings, axis=0)
         rospy.loginfo("[BotaSenseOne]Calibration complete")
+
+    
+    def set_load_effect(self, load_effect):
+        # set the load effect on the sensor data
+        # load_effect is a 6x1 vector, containing fx, fy, fz, mx, my, mz that the load produces on the sensor
+        self.load_effect = load_effect
 
 
     def close(self):

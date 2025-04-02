@@ -61,7 +61,13 @@ if setup=='newLab_facingRobot':
     if subject == 'subject1':
         position_gh_in_base = np.array([-0.9, 0, 0.62]) # position of the center of the shoulder frame (GH joint) in the base frame [m]
 
-    ar_offset = 0
+    # offsets depending on how the brace is mounted on the sensor, and how the sensor is mounted on the robot
+    ar_offset = 0   
+    sensor_brace_angle = np.pi/4   # angle to bring the x axis of the sensor on the x axis of the robot end-effector (according to right hand rule)
+    
+    # let's use orientation of the sensor to find the center of mass of the load in the sensor frame
+    sensor_R_ee = R.from_euler('z', sensor_brace_angle) # rotation matrix expressing the orientation of the sensor in the ee frame
+    brace_com = sensor_R_ee.as_matrix() @ brace_com     # position of the center of mass of the brace [m]
 
 if setup=='OldLab':                  
     # This is the setup used before the lab was moved
@@ -280,6 +286,7 @@ experimental_params['elb_R_ee'] = elb_R_ee
 experimental_params['ft_sensor_port'] = "/dev/ttyUSB0"
 experimental_params['brace_mass'] = brace_mass
 experimental_params['brace_com'] = brace_com
+experimental_params['sensor_R_ee'] = sensor_R_ee
 # -------------------------------------------------------------------------------
 # names of the ROS topics on which the shared communication between biomechanical-based optimization and robot control will happen
 shared_ros_topics = {}

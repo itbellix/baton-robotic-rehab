@@ -21,6 +21,7 @@ from geometry_msgs.msg import PoseStamped, TwistStamped
 from sensor_msgs.msg import JointState
 
 from spatialmath import SE3
+import math
 
 # import dynamic reconfigure client to change parameters of the controller
 import dynamic_reconfigure.client
@@ -118,7 +119,6 @@ class RobotControlModule:
 
         # define a ROS subscriber to receive the commanded (optimal) trajectory for the EE, from the
         # biomechanical-based optimization
-        # TODO: figure out how to do this with Nicky's repo (part of commanding given reference is unclear for me)
         self.topic_optimal_pose_ee = shared_ros_topics['optimal_cartesian_ref_ee']
         self.sub_to_optimal_pose_ee = rospy.Subscriber(self.topic_optimal_pose_ee, 
                                                        PoseStamped,
@@ -134,13 +134,14 @@ class RobotControlModule:
                                             # starting point. When set to true, the estimated shoulder state are meaningful
         self.joint_states = None
         self.joint_velocities = None
-        self.joint_effors = None
+        self.joint_efforts = None
 
         # define parameters for the filtering of the human state estimation
         self.alpha_p = 0.8                  # weight of the exponential moving average filter (position part)
         self.alpha_v = 0.8                  # weight of the exponential moving average filter (velocity part)
+        self.alpha_a = 1.0                  # weight of the exponential moving average filter (acceleration part)
         self.human_pose_estimated = np.zeros(9)
-        self.last_timestamp = 0
+        self.last_timestamp_estimation = None       # timestamp of the last human pose estimation
         self.filter_initialized = False     # whether the filter applied on the human pose estimation has
                                             # already been initialized
         
@@ -193,6 +194,7 @@ class RobotControlModule:
         If the desired position for the therapy/experiment has been reached, it also converts the current EE pose into shoulder pose 
         (under the assumption that the glenohumeral joint center is fixed in space), and publishes this information on a topic.
         """
+        timestamp_msg = data.header.stamp.to_time()
         cart_pose_ee = np.array([data.pose.position.x, data.pose.position.y, data.pose.position.z])
         orientation_quat = np.array([data.pose.orientation.x, data.pose.orientation.y, data.pose.orientation.z, data.pose.orientation.w])
         homogeneous_matrix = np.eye(4)
@@ -200,9 +202,10 @@ class RobotControlModule:
         homogeneous_matrix[0:3, 3] = cart_pose_ee
         self.ee_pose_curr = SE3(homogeneous_matrix)   # value for the homogenous matrix describing ee pose
         
-        # check if the robot has already reached its desired pose (if so, publish shoulder poses too) 
-        # and if at least one twist message has been received
-        if self.initial_pose_reached and self.ee_twist_curr is not None:
+        # check if the robot has already reached its desired pose and if at least one twist message has been received 
+        # If so, estimate and publish human (shoulder) poses
+        # if self.initial_pose_reached and self.ee_twist_curr is not None:
+        if self.ee_twist_curr is not None:   # TODO: only for debug, condition above is correct
             R_ee = self.ee_pose_curr.R    # retrieve the rotation matrix defining orientation of EE frame
             sh_R_elb = np.transpose(experimental_params['base_R_shoulder'].as_matrix())@R_ee@np.transpose(experimental_params['elb_R_ee'].as_matrix())
 
@@ -255,20 +258,18 @@ class RobotControlModule:
             elb_twist = R.from_euler('x', -se).as_matrix().T @ local_twist
             ar_dot = elb_twist[1,1]
 
-            # filter the state values (we use an exponential moving average filter)
+            # filter the state values (we use an exponential filter)
             if not self.filter_initialized:
                 # if the filter state has not been initialized yet, do it now
-                self.human_pose_estimated[0] = pe
-                self.human_pose_estimated[1] = pe_dot
-                self.human_pose_estimated[2] = se
-                self.human_pose_estimated[3] = se_dot
-                self.human_pose_estimated[4] = ar
-                self.human_pose_estimated[5] = ar_dot
+                self.human_pose_estimated[0] = np.round(pe, 3)
+                self.human_pose_estimated[1] = np.round(pe_dot, 3)
+                self.human_pose_estimated[2] = np.round(se, 3)
+                self.human_pose_estimated[3] = np.round(se_dot, 3)
+                self.human_pose_estimated[4] = np.round(ar, 3)
+                self.human_pose_estimated[5] = np.round(ar_dot, 3)
                 self.human_pose_estimated[6] = 0            # we initialize the accelerations to be 0
                 self.human_pose_estimated[7] = 0            # we initialize the accelerations to be 0
                 self.human_pose_estimated[8] = 0            # we initialize the accelerations to be 0
-
-                self.last_timestamp = rospy.Time.now().to_time()
 
                 self.filter_initialized = True
 
@@ -281,31 +282,42 @@ class RobotControlModule:
             ar_dot = self.alpha_v * ar_dot + (1-self.alpha_v) * self.human_pose_estimated[5]
 
             # retrieve accelerations differentiating numerically the velocities
-            time_now = rospy.Time.now().to_time()
-            delta_t = time_now - self.last_timestamp
-            pe_ddot = (pe_dot - self.human_pose_estimated[1])/delta_t
-            se_ddot = (se_dot - self.human_pose_estimated[3])/delta_t
-            ar_ddot = (ar_dot - self.human_pose_estimated[5])/delta_t
+            pe_ddot = 0
+            se_ddot = 0
+            ar_ddot = 0
+
+            if self.last_timestamp_estimation is not None:
+                delta_t = timestamp_msg - self.last_timestamp_estimation
+                if delta_t > 0:
+                    pe_ddot = (pe_dot - self.human_pose_estimated[1])/delta_t
+                    se_ddot = (se_dot - self.human_pose_estimated[3])/delta_t
+                    ar_ddot = (ar_dot - self.human_pose_estimated[5])/delta_t
+
+                    # filter accelerations too
+                    # note that here self.alpha_a=1
+                    pe_ddot = self.alpha_a * pe_ddot + (1-self.alpha_a) * self.human_pose_estimated[6]
+                    se_ddot = self.alpha_a * se_ddot + (1-self.alpha_a) * self.human_pose_estimated[7]
+                    ar_ddot = self.alpha_a * ar_ddot + (1-self.alpha_a) * self.human_pose_estimated[8]
+
+            if math.isnan(self.human_pose_estimated[8]):
+                aux = 0
 
             # update last estimated pose (used as state of the filter)
-            self.human_pose_estimated[0] = pe
-            self.human_pose_estimated[1] = pe_dot
-            self.human_pose_estimated[2] = se
-            self.human_pose_estimated[3] = se_dot
-            self.human_pose_estimated[4] = ar
-            self.human_pose_estimated[5] = ar_dot
-            self.human_pose_estimated[6] = pe_ddot
-            self.human_pose_estimated[7] = se_ddot
-            self.human_pose_estimated[8] = ar_ddot
+            self.human_pose_estimated[0] = np.round(pe, 3)
+            self.human_pose_estimated[1] = np.round(pe_dot, 3)
+            self.human_pose_estimated[2] = np.round(se, 3)
+            self.human_pose_estimated[3] = np.round(se_dot, 3)
+            self.human_pose_estimated[4] = np.round(ar, 3)
+            self.human_pose_estimated[5] = np.round(ar_dot, 3)
+            self.human_pose_estimated[6] = np.round(pe_ddot, 3)
+            self.human_pose_estimated[7] = np.round(se_ddot, 3)
+            self.human_pose_estimated[8] = np.round(ar_ddot, 3)
 
-            self.last_timestamp = time_now      # used as the timestamp of the previous information
-
-            # retrieve also the current XYZ cartesian position of the robot
-            xyz_ee = self.ee_pose_curr.t
+            self.last_timestamp_estimation = timestamp_msg      # used as the timestamp of the previous information
 
             # build the message and fill it with information
             message = Float32MultiArray()
-            message.data = np.round(np.concatenate((np.array([pe, pe_dot, se, se_dot, ar, ar_dot, pe_ddot, se_ddot, ar_ddot]), xyz_ee)), 3)
+            message.data = np.round(np.concatenate((self.human_pose_estimated, orientation_quat, cart_pose_ee)), 3)
 
             # publish only if ROSCORE is running
             if not rospy.is_shutdown():
@@ -434,24 +446,6 @@ class RobotControlModule:
         while not rospy.is_shutdown():
             self.pub_request_reference.publish(self.requesting_reference)
             rate.sleep()
-    
-    
-    def stop(self):
-        """
-        This function allows to stop the execution. 
-        If the robot is being operated in CARTESIAN mode, the current EE pose is set as a reference and kept.
-        If the robot is in JOINT mode, the last commanded joint pose is kept, and the robot is driven to that.
-        """
-        # set the current configuration as the reference for the robot
-        self.reconf_client_cart.update_configuration({'set_new_reference_pose':True})
-        self.reconf_client_joint.update_configuration({'set_new_reference_pose':True})
-
-        # set correct flags to let TO_module know we are done
-        self.trackReferenceStream(False)
-
-        # allow some time for the update to be processed
-        rospy.sleep(0.1)
-
 
     def cartesian_trajectory_done_callback(self, status, result):
         self.desired_pose_reached = result.success
@@ -459,51 +453,6 @@ class RobotControlModule:
     
     def joint_trajectory_done_callback(self, status, result):
         self.desired_pose_reached = result.success
-
-
-    def test_publish_cartesian(self, reference, time_movement, stiffness, damping = None, nullspace_gain = np.zeros(7), nullspace_reference = np.zeros(7)):
-        """
-        This is a testing utility to publish a given reference to the robot.
-        It requires a reference (6x1 pose of the ee), and a time over which
-        the movement will be executed.
-        """
-        self.reference_tracker.mode = 'ee_cartesian_ds'
-        self.reference_tracker.time = time_movement
-        self.reference_tracker.reference = reference
-        self.reference_tracker.precision = 1e-2
-
-        self.reference_tracker.stiffness = stiffness
-        if damping is None:
-            self.reference_tracker.damping = 2*np.sqrt(stiffness)
-        else:
-            self.reference_tracker.damping = damping
-
-        # add nullspace gains for the control at the joint level
-        self.reference_tracker.nullspace_gain = nullspace_gain
-        self.reference_tracker.nullspace_reference = nullspace_reference
-        
-        # send the goal for the robot to move towards the reference
-        self.client.send_goal(self.reference_tracker)
-        self.client.wait_for_result()
-
-
-    def test_publish_joint(self, reference, time_movement):
-        """
-        This is a testing utility to publish a given reference to the robot.
-        It requires a reference (7x1 joint positions), and a time over which
-        the movement will be executed
-        """
-        self.reference_tracker.mode = 'ee_cartesian_jds'
-        self.reference_tracker.time = time_movement
-        self.reference_tracker.reference = reference
-        self.reference_tracker.precision = 1e-2
-
-        self.reference_tracker.stiffness = np.array([30, 30, 30, 30, 30, 30, 30])
-        self.reference_tracker.damping = 1/2*np.sqrt(self.reference_tracker.stiffness)  # lower damping for stability
-        
-        # send the goal for the robot to move towards the reference
-        self.client.send_goal(self.reference_tracker)
-        self.client.wait_for_result()
 
 
 if __name__ == "__main__":
@@ -545,6 +494,9 @@ if __name__ == "__main__":
                         - 'p' to pause the therapy
                         - 't' to run do some testing
                         - 'z' to set cartesian stiffness and damping to 0
+                        - 'h' to send the robot to homing position
+                        - 'c' to switch to the Cartesian controller
+                        - 'j' to switch to the Joint controller
                         - 'q' to quit the therapy"""
         
         window.create_text(250, 100, text=caption_text, font=("Helvetica", 12), fill="black")
@@ -567,6 +519,7 @@ if __name__ == "__main__":
 
         # first make sure that we start from the homing position
         rospy.loginfo("Moving to homing position")
+        control_module.reconf_client_joint.update_configuration({'stiffness':250})   # set stiffness for the controller
         goal = JointTrajectoryExecutionGoal()
         joint_pose_msg = Float64MultiArray()
         joint_pose_msg.data = np.zeros(7)       # retrieve the joint angles for the desired pose
@@ -635,7 +588,6 @@ if __name__ == "__main__":
                                                                             'nullspace_stiffness_elbow_x':10,
                                                                             'nullspace_stiffness_elbow_y':10,
                                                                             'nullspace_stiffness_elbow_z':10})
-                            # TODO: maybe smarter to use a YAML file to set these values more easily!
                             
                             if experiment == 1:
                                 # with the old controller I would add a nullspace joint controller also on the last links (to keep them close to 0)
@@ -690,6 +642,65 @@ if __name__ == "__main__":
                     # Implement here the test we need
                     rospy.loginfo("No test implemented yet. Doing nothing")
 
+                if pressed_key.get() == "h":
+
+                    if control_module.active_controller == 'CIC':
+                        rospy.loginfo("Robot is controlled by a CIC. Switching to a JIC...")
+                        # switch to cartesian impedance controller
+                        response = control_module.controller_manager(start_controllers=['/JointImpedanceController'],
+                                                                     stop_controllers=['/CartesianImpedanceController'], strictness=1,
+                                                                     start_asap=True, timeout=0.0)
+                        if response.ok:
+                            control_module.active_controller = 'JIC'
+                        else:
+                            rospy.logerr("Failed to switch to Joint controller")
+                            
+                    # send the robot to the home position
+                    rospy.loginfo("Moving to homing position")
+                    goal = JointTrajectoryExecutionGoal()
+                    joint_pose_msg = Float64MultiArray()
+                    joint_pose_msg.data = np.zeros(7)       # retrieve the joint angles for the desired pose
+                    goal.joint_positions_goal = joint_pose_msg
+                    
+                    joint_vel_msg = Float64MultiArray()
+                    joint_vel_msg.data = rt_factor * 0.2 * np.ones(7)   # setting reference speed to 0.2 rad/s for all joints   
+                    goal.joint_velocities_goal = joint_vel_msg
+                    control_module.joint_action_client.send_goal(goal)
+                    control_module.joint_action_client.wait_for_result()
+
+                # 'c' switch to cartesian impedance controller
+                if pressed_key.get() == 'c':
+                    if control_module.active_controller == 'JIC':
+                            rospy.loginfo("switching controller to CIC")
+                            response = control_module.controller_manager(start_controllers=['/CartesianImpedanceController'],
+                                                                    stop_controllers=['/JointImpedanceController'], strictness=1,
+                                                                    start_asap=True, timeout=0.0)
+
+                            if not response.ok:
+                                rospy.logerr("Failed to switch to cartesian controller")
+                            else:
+                                control_module.active_controller = 'CIC'
+                    else:
+                        rospy.loginfo("robot is already controlled by a CIC. Doing nothing...")
+                    
+                    # setting controller stiffness
+                    control_module.reconf_client_cart.update_configuration({'separate_axis':False, 'translational_stiffness':400, 'rotational_stiffness':15})
+
+                # 'j' switch to joint impedance controller
+                if pressed_key.get() == 'j':
+                    if control_module.active_controller == 'CIC':
+                            rospy.loginfo("switching controller to JIC")
+                            response = control_module.controller_manager(start_controllers=['/JointImpedanceController'],
+                                                                    stop_controllers=['/CartesianImpedanceController'], strictness=1,
+                                                                    start_asap=True, timeout=0.0)
+
+                            if not response.ok:
+                                rospy.logerr("Failed to switch to joint controller")
+                            else:
+                                control_module.active_controller = 'JIC'
+                    else:
+                        rospy.loginfo("robot is already controlled by a JIC. Doing nothing...")
+
                 # 'z' set cartesian stiffness and damping to 0
                 if pressed_key.get() == 'z':
                     rospy.loginfo("Zero stiffness/damping in 5 seconds")
@@ -710,8 +721,19 @@ if __name__ == "__main__":
 
                 # 'q': quit the execution, and freeze the robot to the current pose
                 if pressed_key.get() == "q":
+                    if control_module.active_controller == 'CIC':
+                        rospy.loginfo("switching controller to JIC")
+                        response = control_module.controller_manager(start_controllers=['/JointImpedanceController'],
+                                                                stop_controllers=['/CartesianImpedanceController'], strictness=1,
+                                                                start_asap=True, timeout=0.0)
+
+                        if not response.ok:
+                            rospy.logerr("Failed to switch to joint controller")
+                        else:
+                            control_module.active_controller = 'JIC'
+
                     rospy.loginfo("shutting down - freezing to current position")
-                    control_module.stop()
+                    control_module.requesting_reference = False
 
                     # adjust flag for termination
                     ongoing_therapy = False

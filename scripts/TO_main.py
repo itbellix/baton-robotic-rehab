@@ -90,9 +90,10 @@ if __name__ == '__main__':
                                    constrainGHjoint=True, 
                                    actuatorReserveBounds=[-1e6, 1e6], 
                                    prescribedForceIndex = [opensim_model.getForceSet().getIndex(prescribed_force_ulna)])
+            rmr_solver.setObjective(objective)
 
         ## PARAMETERS -----------------------------------------------------------------------------------------------
-        # import the parameters for the experiment as defined in experiment_parameters.py
+        # import the parameters for the experiment as defined in e xperiment_parameters.py
         from experiment_parameters import *     # this contains the experimental_params and the shared_ros_topics
 
         # are we debugging or not?
@@ -174,10 +175,6 @@ if __name__ == '__main__':
                                     speed_estimate = speed_estimate,
                                     ft_sensor=sensor,
                                     rmr_solver = rmr_solver)
-        
-        # if the sensor is connected, specify load parameters coming from the brace mounted on it
-        if sensor.is_functional:
-            to_module.setSensorLoadParameters(experimental_params['brace_mass'], experimental_params['brace_com'])
 
         # define how the dynamics of the model will be provided to the optimizer
         if use_casadi_function: 
@@ -241,10 +238,12 @@ if __name__ == '__main__':
         # Publish the initial position of the KUKA end-effector, according to the initial shoulder state
         # This code is blocking until an acknowledgement is received, indicating that the initial pose has been successfully
         # received by the RobotControlModule
-        to_module.publishInitialPoseAsCartRef(shoulder_pose_ref = x_0[0::2], 
-                                            position_gh_in_base = experimental_params['p_gh_in_base'], 
-                                            base_R_sh = experimental_params['base_R_shoulder'], 
-                                            dist_gh_elbow = experimental_params['d_gh_ee_in_shoulder'])
+        # to_module.publishInitialPoseAsCartRef(shoulder_pose_ref = x_0[0::2], 
+        #                                     position_gh_in_base = experimental_params['p_gh_in_base'], 
+        #                                     base_R_sh = experimental_params['base_R_shoulder'], 
+        #                                     dist_gh_elbow = experimental_params['d_gh_ee_in_shoulder'])
+
+        # TODO: uncomment above (now debugging)
 
         # Wait until the robot has reached the required position, and proceed only when the current shoulder pose is published
         to_module.waitForShoulderState()
