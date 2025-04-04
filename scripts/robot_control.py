@@ -316,6 +316,7 @@ class RobotControlModule:
             if not rospy.is_shutdown():
                 self.pub_shoulder_pose.publish(message_filt)
                 self.pub_shoulder_pose_unfiltered.publish(message_unfiltered)
+            # TODO: the accelerations are actually of the opposite sign! CHECK THIS!
 
 
     def _callback_ee_optimal_pose(self,data):
