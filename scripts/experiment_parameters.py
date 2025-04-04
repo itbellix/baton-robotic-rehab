@@ -298,6 +298,7 @@ experimental_params['ar_offset'] = ar_offset
 # names of the ROS topics on which the shared communication between biomechanical-based optimization and robot control will happen
 shared_ros_topics = {}
 shared_ros_topics['estimated_shoulder_pose'] = 'estimated_shoulder_pose'
+shared_ros_topics['estimated_shoulder_pose_unfiltered'] = 'estimated_shoulder_pose_unfiltered'
 shared_ros_topics['cartesian_init_pose'] = 'cartesian_init_pose'
 shared_ros_topics['optimal_cartesian_ref_ee'] = '/CartesianImpedanceController/reference_cartesian_pose'
 shared_ros_topics['request_reference'] = 'request_reference'

@@ -49,13 +49,17 @@ class RobotControlModule:
     """
     This class implements the robot control
     """
-    def __init__(self, shared_ros_topics, experimental_params):
+    def __init__(self, shared_ros_topics, experimental_params, simulation=True):
         """
         Initializes a RobotControlModule object, given:
         * shared_ros_topics: list of names of ROS topics used to communicate with a TO_module
         * experimental_params: parameters that are dependent on the experimental setup 
                                (such as arm length, orientation wrt the robot, etc...)
+        * simulation: boolean indicating whether the robot is in simulation or not
         """
+        # are we operating in simulation?
+        self.simulation = simulation
+
         # define the robot model
         self.robot = lbr.LBR7_iiwa_ros_DH()
 
@@ -117,6 +121,9 @@ class RobotControlModule:
         self.topic_shoulder_pose= shared_ros_topics['estimated_shoulder_pose']
         self.pub_shoulder_pose = rospy.Publisher(self.topic_shoulder_pose, Float32MultiArray, queue_size = 1)
 
+        self.topic_shoulder_pose_unfiltered= shared_ros_topics['estimated_shoulder_pose_unfiltered']
+        self.pub_shoulder_pose_unfiltered = rospy.Publisher(self.topic_shoulder_pose_unfiltered, Float32MultiArray, queue_size = 1)
+
         # define a ROS subscriber to receive the commanded (optimal) trajectory for the EE, from the
         # biomechanical-based optimization
         self.topic_optimal_pose_ee = shared_ros_topics['optimal_cartesian_ref_ee']
@@ -137,14 +144,22 @@ class RobotControlModule:
         self.joint_efforts = None
 
         # define parameters for the filtering of the human state estimation
-        self.alpha_p = 0.8                  # weight of the exponential moving average filter (position part)
-        self.alpha_v = 0.8                  # weight of the exponential moving average filter (velocity part)
-        self.alpha_a = 1.0                  # weight of the exponential moving average filter (acceleration part)
-        self.human_pose_estimated = np.zeros(9)
-        self.last_timestamp_estimation = None       # timestamp of the last human pose estimation
-        self.filter_initialized = False     # whether the filter applied on the human pose estimation has
-                                            # already been initialized
-        
+        # if cartesian pose/twist are published at 200 Hz, alpha = 0.15 guarantees a cutoff frequency of about 5 Hz.
+        if simulation:  # assume sampling frequency of 1000 Hz
+            self.fs = 1000
+            self.alpha_p = 0.03                         # weight of the exponential moving average filter for human pose
+            self.ma_window = 30                         # a moving average filter with window of 50 samples is used for vel and acc data                              
+            self.alpha_a = 0.03                         # weight of the exponential moving average filter for human acceleration
+        else:           # assume sampling frequency of 200 Hz
+            self.fs = 200
+            self.alpha_p = 0.15
+            self.ma_window = 10                         # a moving average filter with window of 10 samples is used for vel and acc data
+            self.alpha_a = 0.15                         # weight of the exponential moving average filter for human acceleration
+
+        self.past_human_state_est = np.zeros((9, self.ma_window))   # history of the human state estimation 
+                                                                    # (pe, pe_dot, se, se_dot, ar, ar_dot, pe_ddot, se_ddot, ar_ddot)
+        self.last_timestamp_estimation = None                       # timestamp of the last human pose estimation
+
         # set up a publisher and its thread for publishing continuously whether the robot is tracking the 
         # optimal trajectory or not
         self.topic_request_reference = shared_ros_topics['request_reference']
@@ -257,70 +272,50 @@ class RobotControlModule:
             elb_twist = R.from_euler('x', -se).as_matrix().T @ local_twist
             ar_dot = elb_twist[1,1]
 
-            # filter the state values (we use an exponential filter)
-            if not self.filter_initialized:
-                # if the filter state has not been initialized yet, do it now
-                self.human_pose_estimated[0] = np.round(pe, 3)
-                self.human_pose_estimated[1] = np.round(pe_dot, 3)
-                self.human_pose_estimated[2] = np.round(se, 3)
-                self.human_pose_estimated[3] = np.round(se_dot, 3)
-                self.human_pose_estimated[4] = np.round(ar, 3)
-                self.human_pose_estimated[5] = np.round(ar_dot, 3)
-                self.human_pose_estimated[6] = 0            # we initialize the accelerations to be 0
-                self.human_pose_estimated[7] = 0            # we initialize the accelerations to be 0
-                self.human_pose_estimated[8] = 0            # we initialize the accelerations to be 0
+            # NOTE: since this callback is executed quite fast, we do not bother to initialize the filter state
+            # apply exponential filter on the estimated human pose
+            pe_filt = self.alpha_p * pe + (1-self.alpha_p) * self.past_human_state_est[0, 0]
+            se_filt = self.alpha_p * se + (1-self.alpha_p) * self.past_human_state_est[2, 0]
+            ar_filt = self.alpha_p * ar + (1-self.alpha_p) * self.past_human_state_est[4, 0]
 
-                self.filter_initialized = True
+            # compute filtered velocities through moving average filter (first we put the raw variable, then filter it, then save it again)
+            self.past_human_state_est[1, 0] = pe_dot
+            self.past_human_state_est[3, 0] = se_dot
+            self.past_human_state_est[5, 0] = ar_dot
+            pe_dot_filt = np.mean(self.past_human_state_est[1, :])
+            se_dot_filt = np.mean(self.past_human_state_est[3, :])
+            ar_dot_filt = np.mean(self.past_human_state_est[5, :])
+            self.past_human_state_est[1, 0] = pe_dot_filt
+            self.past_human_state_est[3, 0] = se_dot_filt
+            self.past_human_state_est[5, 0] = ar_dot_filt
 
-            # filter the estimates for the human pose (glenohumeral angles and velocities)    
-            pe = self.alpha_p * pe + (1-self.alpha_p) * self.human_pose_estimated[0]
-            pe_dot = self.alpha_v * pe_dot + (1-self.alpha_v) * self.human_pose_estimated[1]
-            se = self.alpha_p * se + (1-self.alpha_p) * self.human_pose_estimated[2]
-            se_dot = self.alpha_v * se_dot + (1-self.alpha_v) * self.human_pose_estimated[3]
-            ar = self.alpha_p * ar + (1-self.alpha_p) * self.human_pose_estimated[4]
-            ar_dot = self.alpha_v * ar_dot + (1-self.alpha_v) * self.human_pose_estimated[5]
+            # retrieve the human accelerations by differentiating the velocities
+            pe_ddot = np.gradient(self.past_human_state_est[1, :], 1/self.fs)[0]
+            se_ddot = np.gradient(self.past_human_state_est[3, :], 1/self.fs)[0]
+            ar_ddot = np.gradient(self.past_human_state_est[5, :], 1/self.fs)[0]
 
-            # retrieve accelerations differentiating numerically the velocities
-            pe_ddot = 0
-            se_ddot = 0
-            ar_ddot = 0
+            # apply exponential filter on the estimated human acceleration
+            pe_ddot_filt = self.alpha_a * pe_ddot + (1-self.alpha_a) * self.past_human_state_est[6, 0]
+            se_ddot_filt = self.alpha_a * se_ddot + (1-self.alpha_a) * self.past_human_state_est[7, 0]
+            ar_ddot_filt = self.alpha_a * ar_ddot + (1-self.alpha_a) * self.past_human_state_est[8, 0]
 
-            if self.last_timestamp_estimation is not None:
-                delta_t = timestamp_msg - self.last_timestamp_estimation
-                if delta_t > 0:
-                    pe_ddot = (pe_dot - self.human_pose_estimated[1])/delta_t
-                    se_ddot = (se_dot - self.human_pose_estimated[3])/delta_t
-                    ar_ddot = (ar_dot - self.human_pose_estimated[5])/delta_t
-
-                    # filter accelerations too
-                    # note that here self.alpha_a=1
-                    pe_ddot = self.alpha_a * pe_ddot + (1-self.alpha_a) * self.human_pose_estimated[6]
-                    se_ddot = self.alpha_a * se_ddot + (1-self.alpha_a) * self.human_pose_estimated[7]
-                    ar_ddot = self.alpha_a * ar_ddot + (1-self.alpha_a) * self.human_pose_estimated[8]
-
-            if math.isnan(self.human_pose_estimated[8]):
-                aux = 0
-
-            # update last estimated pose (used as state of the filter)
-            self.human_pose_estimated[0] = np.round(pe, 3)
-            self.human_pose_estimated[1] = np.round(pe_dot, 3)
-            self.human_pose_estimated[2] = np.round(se, 3)
-            self.human_pose_estimated[3] = np.round(se_dot, 3)
-            self.human_pose_estimated[4] = np.round(ar, 3)
-            self.human_pose_estimated[5] = np.round(ar_dot, 3)
-            self.human_pose_estimated[6] = np.round(pe_ddot, 3)
-            self.human_pose_estimated[7] = np.round(se_ddot, 3)
-            self.human_pose_estimated[8] = np.round(ar_ddot, 3)
-
+            # update last estimated pose
+            self.past_human_state_est[:, 1:] = self.past_human_state_est[:, :-1]
+            self.past_human_state_est[:, 0] = np.array([pe_filt, pe_dot_filt, se_filt, se_dot_filt, ar_filt, ar_dot_filt, pe_ddot_filt, se_ddot_filt, ar_ddot_filt])
             self.last_timestamp_estimation = timestamp_msg      # used as the timestamp of the previous information
 
             # build the message and fill it with information
-            message = Float32MultiArray()
-            message.data = np.round(np.concatenate((self.human_pose_estimated, orientation_quat, cart_pose_ee)), 3)
+            message_filt = Float32MultiArray()
+            message_filt.data = np.concatenate((self.past_human_state_est[:,0], orientation_quat, cart_pose_ee))
+
+            # publish also unfiltered reference for debugging (TODO: remove)
+            message_unfiltered = Float32MultiArray()
+            message_unfiltered.data = np.array([pe, pe_dot, se, se_dot, ar, ar_dot, pe_ddot, se_ddot, ar_ddot])
 
             # publish only if ROSCORE is running
             if not rospy.is_shutdown():
-                self.pub_shoulder_pose.publish(message)
+                self.pub_shoulder_pose.publish(message_filt)
+                self.pub_shoulder_pose_unfiltered.publish(message_unfiltered)
 
 
     def _callback_ee_optimal_pose(self,data):
@@ -512,7 +507,7 @@ if __name__ == "__main__":
         root.bind("<Key>", on_key_press)
 
         # instantiate a RobotControlModule with the correct shared ros topics (coming from experiment_parameters.py)
-        control_module = RobotControlModule(shared_ros_topics, experimental_params)
+        control_module = RobotControlModule(shared_ros_topics, experimental_params, simulation)
 
         rospy.loginfo("control module instantiated")
 
