@@ -11,9 +11,10 @@ from scipy.spatial.transform import Rotation as R
 
 #-------------------------------------------------------------------------
 # choose which experiment to perform
-experiment = 1      # 1: Passive human subject (strain map is only position-dependent)
+experiment = 4      # 1: Passive human subject (strain map is only position-dependent)
                     # 2: Active human subject (strain maps change with muscle activation)
                     # 3: tuning of the cost function weights, in simulation, for experiment #1
+                    # 4: execution of A* planning in simulation
 #-------------------------------------------------------------------------
 
 # define the required paths
@@ -117,6 +118,9 @@ if experiment == 1:
 
     speed_estimate = True
 
+    perform_BATON = True
+    perform_A_star = False
+
 if experiment == 2:
     # determine the time horizon and control intervals for the NLP problem, on the basis of the experiment
     N = 10      # control intervals used (control will be constant during each interval)
@@ -200,6 +204,9 @@ if experiment == 2:
     max_activation = 0.5
     delta_activation = 0.01
 
+    perform_BATON = True
+    perform_A_star = False
+
 if experiment == 3: # TUNING OF OCP COST FUNCTION WEIGHTS (Fig. 4 in the paper)
     # determine the time horizon and control intervals for the NLP problem, on the basis of the experiment
     N = 50  # control intervals used (control will be constant during each interval)
@@ -229,6 +236,49 @@ if experiment == 3: # TUNING OF OCP COST FUNCTION WEIGHTS (Fig. 4 in the paper)
     constrain_final_velocity = True
 
     speed_estimate = False
+
+    perform_BATON = True
+    perform_A_star = False
+
+if experiment == 4: # Execution of A* planning in simulation
+    # strainmap file only for visualization purposes
+    file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Passive', 'differentiable_strainmaps_allTendons.pkl')
+
+    # file from which to read the precomputed parameters that define the strainmaps
+    strainmap_graph = np.load(os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Passive', 'All_0_min2AR.npy'))
+
+    strainmap_list_astar = strainmap_graph.tolist()
+
+    Barrier = np.where(strainmap_graph > 2.2)
+    SMap = np.zeros(shape=strainmap_graph.shape, dtype=int)
+    SMap[Barrier] = 1
+
+    maze = SMap.tolist()
+
+    # usage: astar(maze, start, end, strain)
+
+    # initial state (referred explicitly to the position of the patient's GH joint) 
+    # Therapy will start in this position - used to build the NLP structure, and to command first position of the robot
+    # x = [pe, pe_dot, se, se_dot, ar, ar_dot], but note that ar and ar_dot are not tracked
+    x_0 = np.deg2rad(np.array([120, 0, 100, 0, 0, 0]))
+
+    # goal states (if more than one, the next one is used once the previous is reached)
+    x_goal = np.deg2rad(np.array([50, 0, 40, 0, 0, 0]))
+
+    perform_BATON = False
+    perform_A_star = True
+
+    # other variables not really used in this experiment
+    N = 1  # control intervals used (control will be constant during each interval)
+    T = 1  # time horizon for the optimization
+    speed_estimate = True
+    constrain_final_position = True
+    constrain_final_velocity = True
+    # set the cost weights
+    gamma_strain = 0        # weight for increase in strain
+    gamma_goal = 0          # weight for distance to goal
+    gamma_velocities = 0    # weight on the coordinates' velocities
+    gamma_acceleration = 0  # weight on the coordinates' acceleration
 
 
 # -------------------------------------------------------------------------------

@@ -29,6 +29,7 @@ from geometry_msgs.msg import PoseStamped
 from experiment_parameters import *     # this contains the experimental_params and the shared_ros_topics
 
 from botasensone import BotaSerialSensor
+import astar
 
 class TO_module:
     """
@@ -70,6 +71,8 @@ class TO_module:
         self.nlp_count = 0                          # keeps track of the amount of times the NLP is solved
         self.avg_nlp_time = 0
         self.failed_count = 0
+
+        self.astar_planner = astar.Astar()         # A* planner for the strain map (as implemented in the RAL paper from Micah)
 
         # parameters regarding the muscle activation
         self.rmr_solver = rmr_solver                # instance of the RMR solver for estimating muscle activations in real time
@@ -619,6 +622,41 @@ class TO_module:
             self.pub_optimization_output.publish(message)
 
             return u_opt, x_opt, j_opt, strain_opt, xddot_opt
+        
+
+    def optimize_trajectory_astar(self, maze, x_goal, strainmap_list):
+        """
+        This function plans the trajectory towards the goal position, given the current shoulder state.
+        It uses a modified version of the A* algorithm, as presented in 
+        "Biomechanics aware collaborative robot system for delivery of safe physical therapy in shoulder rehabilitation", 
+        from Prendergast et al. (RAL 2021).
+        The path to follow on the current strain map is saved, to be executed by the robot.
+        """
+        # initialize flag to monitor if the solve found a solution
+        failed = 0
+
+        init_pose = tuple(np.round(self.state_values_current[[0,2]]).astype(int))   # initial pose of the shoulder(pe, se)
+        end_pose = tuple(np.round(x_goal[[0,2]]).astype(int))                       # goal pose of the shoulder(pe, se)
+
+        fullpath = self.astar_planner.plan(maze, init_pose, end_pose, strainmap_list)
+
+        pathpnts = ([t[0] for t in fullpath], [t[1] for t in fullpath])
+        pe = pathpnts[0]
+        se = pathpnts[1]
+        ar = np.ones(np.shape(pe))*self.state_values_current[4]  # axial rotation is constant
+        
+        planned_states = np.zeros((self.nlps_module.dim_x, len(pe)))
+        planned_states[0,:] = pe
+        planned_states[2,:] = se
+        planned_states[4,:] = ar
+
+        planned_controls = np.zeros((self.nlps_module.dim_u, len(pe)-1))    # A* cannot return the controls!
+
+        # update the optimal values stored
+        with self.x_opt_lock:
+            self.x_opt = planned_states
+            self.u_opt = planned_controls
+
 
 
     def publish_continuous_trajectory(self, p_gh_in_base, rot_ee_in_base_0, dist_shoulder_ee):
@@ -674,30 +712,30 @@ class TO_module:
                 velocity_sh = self.state_values_current[1::2]
                 acceleration_sh = self.state_dot_current[1::2]
                 
-                # retrieve the interaction wrenches from the force-torque sensor
-                if self.ft_sensor.is_functional:
-                    # get the interaction wrench from the force-torque sensor
-                    interaction_wrench = np.array([self.ft_sensor.current_reading.fx,
-                                                self.ft_sensor.current_reading.fy,
-                                                self.ft_sensor.current_reading.fz,
-                                                self.ft_sensor.current_reading.mx,
-                                                self.ft_sensor.current_reading.my,
-                                                self.ft_sensor.current_reading.mz])
-                else:
-                    interaction_wrench = np.zeros(6)
-                # TODO: this is still work in progress
-                # estimate the muscle activation level for all the muscles in the model
-                current_activation, _, info = self.rmr_solver.solve(time.time(), position_sh, velocity_sh, acceleration_sh, interaction_wrench)
+                # # retrieve the interaction wrenches from the force-torque sensor
+                # if self.ft_sensor.is_functional:
+                #     # get the interaction wrench from the force-torque sensor
+                #     interaction_wrench = np.array([self.ft_sensor.current_reading.fx,
+                #                                 self.ft_sensor.current_reading.fy,
+                #                                 self.ft_sensor.current_reading.fz,
+                #                                 self.ft_sensor.current_reading.mx,
+                #                                 self.ft_sensor.current_reading.my,
+                #                                 self.ft_sensor.current_reading.mz])
+                # else:
+                #     interaction_wrench = np.zeros(6)
+                # # TODO: this is still work in progress
+                # # estimate the muscle activation level for all the muscles in the model
+                # current_activation, _, info = self.rmr_solver.solve(time.time(), position_sh, velocity_sh, acceleration_sh, interaction_wrench)
 
-                # publish the activation level (for debugging and logging)
-                message = Float32MultiArray()
-                message.data = current_activation
-                self.pub_activation.publish(message)
+                # # publish the activation level (for debugging and logging)
+                # message = Float32MultiArray()
+                # message.data = current_activation
+                # self.pub_activation.publish(message)
 
-                # publish the interaction wrenches after gravity compensation (for debugging and logging)
-                message = Float32MultiArray()
-                message.data = interaction_wrench
-                self.pub_compensated_wrench.publish(message)
+                # # publish the interaction wrenches after gravity compensation (for debugging and logging)
+                # message = Float32MultiArray()
+                # message.data = interaction_wrench
+                # self.pub_compensated_wrench.publish(message)
 
             # sleep for a while
             self.ros_rate.sleep()

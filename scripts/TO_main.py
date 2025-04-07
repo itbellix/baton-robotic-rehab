@@ -333,60 +333,68 @@ if __name__ == '__main__':
                 else:
                     current_goal = x_goal
 
-                # optimize the trajectory towards the given goal
-                to_module.nlps_module.setGoal(goal = current_goal)
-                to_module.optimize_trajectory(current_goal, delay = 0.1)
-                previous_request = True         # save the status of the robot request now
+                if perform_BATON:
+                    # optimize the trajectory towards the given goal
+                    to_module.nlps_module.setGoal(goal = current_goal)
+                    to_module.optimize_trajectory(current_goal, delay = 0.1)
+                    previous_request = True         # save the status of the robot request now
 
-                if experiment == 1:
-                    rospy.sleep(6)
-                    goal_index += 1
-                
-                if experiment == 2:
+                    if experiment == 1:
+                        rospy.sleep(6)
+                        goal_index += 1
+                    
+                    if experiment == 2:
 
-                    if target_tendon == "SSPA":
+                        if target_tendon == "SSPA":
 
-                        if goal_index==2:
-                            if current_activation+delta_act>0.25 or current_activation+delta_act<0.00:
-                                delta_act = - delta_act
-                            current_activation += delta_act
-                            to_module.setActivationLevel(current_activation)
+                            if goal_index==2:
+                                if current_activation+delta_act>0.25 or current_activation+delta_act<0.00:
+                                    delta_act = - delta_act
+                                current_activation += delta_act
+                                to_module.setActivationLevel(current_activation)
 
-                        if goal_index>2:
-                            # to_module.setActivationLevel(0.99)        # this is for having the real robot work fine 
-                            to_module.setActivationLevel(0.25)           # this is for having the simulation work on the real strainmap
-                        
-                        if to_module.reachedPose(current_goal, tolerance = 0.05):
-                            goal_index += 1
-                            # time.sleep(3)
+                            if goal_index>2:
+                                # to_module.setActivationLevel(0.99)        # this is for having the real robot work fine 
+                                to_module.setActivationLevel(0.25)           # this is for having the simulation work on the real strainmap
+                            
+                            if to_module.reachedPose(current_goal, tolerance = 0.05):
+                                goal_index += 1
+                                # time.sleep(3)
 
-                    if target_tendon == "SSPA_sim":
-                        count = count + 1
-                        # uncomment to impose an activation ramp during simulation
-                        # if current_activation+delta_act>0.25 or current_activation+delta_act<0.00:
-                        #     delta_act = - delta_act
-                        # current_activation += delta_act
-                        # to_module.setActivationLevel(current_activation)
+                        if target_tendon == "SSPA_sim":
+                            count = count + 1
+                            # uncomment to impose an activation ramp during simulation
+                            # if current_activation+delta_act>0.25 or current_activation+delta_act<0.00:
+                            #     delta_act = - delta_act
+                            # current_activation += delta_act
+                            # to_module.setActivationLevel(current_activation)
 
-                        # uncomment to impose an activation step during simulation
-                        if count <30:
-                            to_module.setActivationLevel(0.0)
-                        else:
-                            to_module.setActivationLevel(0.25)
-                        
+                            # uncomment to impose an activation step during simulation
+                            if count <30:
+                                to_module.setActivationLevel(0.0)
+                            else:
+                                to_module.setActivationLevel(0.25)
+                            
 
-                    if target_tendon == "custom_1":
-                        # this generates extreme variations in the strain map considered.
-                        # The activation levels set here are fictitious, they are used in utilities_TO.py (specifically in _shoulder_pose_cb())
-                        # to precisely generate different strain landscapes.
-                        if count < 20:
-                            to_module.setActivationLevel(0.90)
-                        elif count >= 20 and count < 60:
-                            to_module.setActivationLevel(0.91)
-                        elif count >= 60:
-                            to_module.setActivationLevel(0.92)
+                        if target_tendon == "custom_1":
+                            # this generates extreme variations in the strain map considered.
+                            # The activation levels set here are fictitious, they are used in utilities_TO.py (specifically in _shoulder_pose_cb())
+                            # to precisely generate different strain landscapes.
+                            if count < 20:
+                                to_module.setActivationLevel(0.90)
+                            elif count >= 20 and count < 60:
+                                to_module.setActivationLevel(0.91)
+                            elif count >= 60:
+                                to_module.setActivationLevel(0.92)
 
-                        count += 1
+                            count += 1
+                elif perform_A_star:
+
+                    if experiment == 4:
+                        # optimize the trajectory towards the given goal
+                        to_module.optimize_trajectory_astar(maze, current_goal, strainmap_list_astar)
+                        previous_request = True         # save the status of the robot request now
+
             
             # if the user wants to interrupt the therapy, or if the last goal position has been reached,
             # we stop the optimization and freeze the robot to its current position.
