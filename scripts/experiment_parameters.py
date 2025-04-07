@@ -117,21 +117,6 @@ if experiment == 1:
 
     speed_estimate = True
 
-    # specify the stiffness and damping for the cartesian impedance controller implemented on the robot
-    # we do this both for the nullspace controlling the elbow (ns_elb) and for the end effector
-    ns_elb_stiffness = np.array([10, 10, 10])
-    ns_elb_damping = 2*np.sqrt(ns_elb_stiffness)
-
-    ee_stiffness = np.array([550, 550, 550, 15, 15, 4])
-    ee_damping = 2*np.sqrt(ee_stiffness) 
-
-    # option to change these only in simulation
-    ns_elb_stiffness_sim = ns_elb_stiffness
-    ns_elb_damping_sim = ns_elb_damping
-
-    ee_stiffness_sim = ee_stiffness
-    ee_damping_sim = ee_damping
-
 if experiment == 2:
     # determine the time horizon and control intervals for the NLP problem, on the basis of the experiment
     N = 10      # control intervals used (control will be constant during each interval)
@@ -215,21 +200,6 @@ if experiment == 2:
     max_activation = 0.5
     delta_activation = 0.01
 
-    # specify the stiffness and damping for the cartesian impedance controller implemented on the robot
-    # we do this both for the nullspace controlling the elbow (ns_elb) and for the end effector
-    ns_elb_stiffness = np.array([10, 10, 10])
-    ns_elb_damping = 2*np.sqrt(ns_elb_stiffness)
-
-    ee_stiffness = np.array([600, 600, 600, 20, 20, 1])
-    ee_damping = 2*np.sqrt(np.array([630, 630, 630, 25, 25, 3])) 
-
-    # option to change these only in simulation
-    ns_elb_stiffness_sim = ns_elb_stiffness
-    ns_elb_damping_sim = ns_elb_damping
-
-    ee_stiffness_sim = ee_stiffness
-    ee_damping_sim = ee_damping
-
 if experiment == 3: # TUNING OF OCP COST FUNCTION WEIGHTS (Fig. 4 in the paper)
     # determine the time horizon and control intervals for the NLP problem, on the basis of the experiment
     N = 50  # control intervals used (control will be constant during each interval)
@@ -259,21 +229,6 @@ if experiment == 3: # TUNING OF OCP COST FUNCTION WEIGHTS (Fig. 4 in the paper)
     constrain_final_velocity = True
 
     speed_estimate = False
-
-    # specify the stiffness and damping for the cartesian impedance controller implemented on the robot
-    # we do this both for the nullspace controlling the elbow (ns_elb) and for the end effector
-    ns_elb_stiffness = np.array([10, 10, 10])
-    ns_elb_damping = 2*np.sqrt(ns_elb_stiffness)
-
-    ee_stiffness = np.array([500, 450, 600, 15, 15, 2])
-    ee_damping = 2*np.sqrt(ee_stiffness) 
-
-    # option to change these only in simulation
-    ns_elb_stiffness_sim = ns_elb_stiffness
-    ns_elb_damping_sim = ns_elb_damping
-
-    ee_stiffness_sim = ee_stiffness
-    ee_damping_sim = ee_damping
 
 
 # -------------------------------------------------------------------------------
