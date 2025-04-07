@@ -10,6 +10,9 @@ experiment_parameters.py. This is referred to as experiment 3 in experiment_para
 import os
 import pickle
 from spatialmath import SO3
+import numpy as np
+import rosbag
+import matplotlib.pyplot as plt
 
 num_params = 6
 def gaussian_2d(x, y, amplitude, x0, y0, sigma_x, sigma_y, offset):
