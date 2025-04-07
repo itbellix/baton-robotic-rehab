@@ -23,7 +23,7 @@ import scipy.optimize as opt
 import pickle
 
 code_path = os.path.dirname(os.path.realpath(__file__))
-path_to_repo = os.path.join(code_path, '..', '..')          # getting path to the repository
+path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
 
 ## PARAMETERS -----------------------------------------------------------------------------------------------
 # choose if we want to fit a given number of Gaussians, or we want to control the maximum fitting RMSE.
@@ -36,13 +36,13 @@ save_prms_to_file =  True           # should the resulting parameters be saved t
 print_flag = True                   # should the results of the fitting process be visualized? (True/False)
 file_prms= 'params_strainmaps'      # the file to which the parameters will be saved (change the name if needed)
 
-fit_only_central_ar = False          # fitting only around axial rotation = 0, not to waste time
+fit_only_central_ar = True          # fitting only around axial rotation = 0, not to waste time
 
 # define the required paths (relative to path_to_repo)
-strainmaps_path = 'Musculoskeletal Models/Strain Maps/Active'
+strainmaps_path = 'Musculoskeletal Models/Strain Maps/Passive'
 
 # file containing all the strains (when muscles are relaxed)
-file_name = 'SSPA_active.npy'       # This file is provided in the repo as an example. If other files are necessary, they
+file_name = 'All_0.npy'       # This file is provided in the repo as an example. If other files are necessary, they
                                     # should be constructed from the OpenSim musculoskeletal model directly (available at https://simtk.org/projects/thoracoscapular)
 
 #------------------------------------------------------------------------------------------------------------
