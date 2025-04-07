@@ -7,12 +7,12 @@ import scipy.optimize as opt
 import pickle
 
 code_path = os.path.dirname(os.path.realpath(__file__))
-path_to_repo = os.path.join(code_path, '..', '..')          # getting path to the repository
+path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
 
 ## PARAMETERS------------------------------------------------------
 
 # define the required paths (relative to path_to_repo)
-strainmaps_path = 'Personal_Results/Strains/Passive/AllMuscles'
+strainmaps_path = 'Musculoskeletal Models/Strain Maps/Passive/'
 
 # file containing all the strains (when muscles are relaxed)
 file_name = 'All_0.npy'
