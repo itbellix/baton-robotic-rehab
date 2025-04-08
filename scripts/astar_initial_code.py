@@ -5,6 +5,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import math as m
 import csv
+import os
 
 ########################
 import matplotlib
@@ -456,24 +457,7 @@ class frame:
 
         return transforms #return the last pose that is set
 ####################################################################################################################
-
-
-IS_A = 0
-SS_A = 0
-SuS_A = 0
-TM_A = 0
-
-IS = np.load('/home/itbellix/Desktop/GitHub/baton-robotic-rehab/Musculoskeletal Models/Strain Maps/original4astar/IS_' + str(int(20 * IS_A)) + '.npy')
-SS = np.load('/home/itbellix/Desktop/GitHub/baton-robotic-rehab/Musculoskeletal Models/Strain Maps/original4astar/SS_' + str(int(20 * SS_A)) + '.npy')
-SuS = np.load('/home/itbellix/Desktop/GitHub/baton-robotic-rehab/Musculoskeletal Models/Strain Maps/original4astar/SuS_' + str(int(20 * SuS_A)) + '.npy')
-TM = np.load('/home/itbellix/Desktop/GitHub/baton-robotic-rehab/Musculoskeletal Models/Strain Maps/original4astar/TM_' + str(int(20 * TM_A)) + '.npy')
-
-# colorsIS = np.load('Strains/ColorMaps/colorsIS_' + str(int(20 * IS_A)) + '.npy', allow_pickle=True)
-# colorsSS = np.load('Strains/ColorMaps/colorsSS_' + str(int(20 * SS_A)) + '.npy', allow_pickle=True)
-# colorsSuS = np.load('Strains/ColorMaps/colorsSuS_' + str(int(20 * SuS_A)) + '.npy', allow_pickle=True)
-# colorsTM = np.load('Strains/ColorMaps/colorsTM_' + str(int(20 * TM_A)) + '.npy', allow_pickle=True)
-
-
+strainmap_graph = np.load(os.path.join(directory, 'Musculoskeletal Models','Strain Maps', 'Passive', 'All_0_min2AR.npy'))
 theta = np.radians(np.arange(-20, 160, 4)).tolist() # Plane Elevation -85 to 180
 phi = np.radians(np.arange(0, 144, 4)).tolist() # Shoulder Elevation -44 to 144
 psi= np.radians(np.arange(-90, 100, 4)).tolist() # Axial Rotation -90 to 100
@@ -481,30 +465,15 @@ psi= np.radians(np.arange(-90, 100, 4)).tolist() # Axial Rotation -90 to 100
 thetaM = np.outer(theta, np.ones(36))
 phiM = np.outer(phi, np.ones(45)).T
 
-
-mstrain = np.zeros((len(psi), len(theta), len(phi)), dtype=float)
-
-for i in range(0, len(theta)):
-    for j in range(0, len(phi)):
-        for k in range(0, len(psi)):
-            mstrain[k][i][j] = np.max([IS[k][i][j], SS[k][i][j], SuS[k][i][j], TM[k][i][j]])
-            # mstrain[k][i][j] = np.max([TM[k][i][j]])
-            # mstrain[k][i][j] = np.max([SS[k][i][j]])
-            # mstrain[k][i][j] = np.max([TM[k][i][j]])
-            # mstrain[k][i][j] = np.max([IS[k][i][j], SS[k][i][j], SuS[k][i][j], TM[k][i][j]])
-            #mstrain[k][i][j] = np.max([IS[k][i][j]])
-
-
-
-
-# def example(print_maze=True):
-# IS = np.load('IS_spd_0_All_0.npy')
-Slayer = mstrain[AxialRotFixed][:][:]
-Barrier = np.where(Slayer > 2.2)
+# here we can set a maximum strain that will never be exceeded
+# A* will plan only in the graph composed by the nodes whose strain is lower than this
+max_strain = 2.2
+Slayer = strainmap_graph
+Barrier = np.where(Slayer > max_strain)
 SMap = np.zeros(shape=Slayer.shape, dtype=int)
 SMap[Barrier] = 1
 
-# list the waypoints that we want to travers
+# list the waypoints that we want to traverse
 waypoints = [(10, 10), (20, 31), (35, 22), (10, 10)]
 
 # Below the original implementation that allows to actually select the waypoints on the strain map
@@ -587,20 +556,12 @@ y = pathpnts[1]
 np.save(pointsfile, fullpath)
 np.save(waypointsfile , waypoints)
 
-mstrain2 = np.zeros((len(psi), len(theta), len(phi)), dtype=float)
-
-for i in range(0, len(theta)):
-    for j in range(0, len(phi)):
-        for k in range(0, len(psi)):
-            mstrain2[k][i][j] = np.max([IS[k][i][j], SS[k][i][j], SuS[k][i][j], TM[k][i][j]])
-            #mstrain2[k][i][j] = IS[k][i][j]
-
 
 ############################################# 3D Plot ###########################################
 
 fig1 = plt.figure()
 ax1 = plt.axes(projection='3d')
-ax1.plot_surface(thetaM, phiM, mstrain2[AxialRotFixed][:][:], rstride=1, cstride=1, cmap='hot', edgecolor='none', linewidth=0, antialiased=True)
+ax1.plot_surface(thetaM, phiM, strainmap_graph, rstride=1, cstride=1, cmap='hot', edgecolor='none', linewidth=0, antialiased=True)
 
 plt.draw()
 plt.show()
@@ -621,8 +582,8 @@ for i in range(0,len(xth)-1):
                           axesA=ax1, color='white', lw = 3)
     ax1.add_patch(p)
     ax1.add_patch(C)
-    art3d.pathpatch_2d_to_3d(C, z=np.mean((mstrain2[AxialRotFixed][x[i], y[i]], mstrain2[AxialRotFixed][x[i+1], y[i+1]])), zdir="z")
-    art3d.pathpatch_2d_to_3d(p, z=mstrain2[AxialRotFixed][x[i],y[i]], zdir="z")
+    art3d.pathpatch_2d_to_3d(C, z=np.mean((strainmap_graph[x[i], y[i]], strainmap_graph[x[i+1], y[i+1]])), zdir="z")
+    art3d.pathpatch_2d_to_3d(p, z=strainmap_graph[x[i],y[i]], zdir="z")
 
 plt.draw()
 plt.show()
@@ -639,7 +600,7 @@ ax3.grid()
 
 map = 'hot'
 
-mstrain3 = mstrain2[AxialRotFixed][:][:].T
+mstrain3 = strainmap_graph[:][:].T
 
 totstrain = 0.0
 pos_strain = 0.0
