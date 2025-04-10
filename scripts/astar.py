@@ -37,11 +37,19 @@ class Node:
 
 class Astar:
 
-    def __init__(self):
-        pass
+    def __init__(self, N_interp):
+
+        self.N_interp = N_interp        # number of points that the final path should be interpolated to
+        self.pe_boundaries = [-20, 160] # defines the interval of physiologically plausible values for the plane of elevation [deg]
+        self.se_boundaries = [0, 144]   # as above, for the shoulder elevation [deg]
+        self.ar_boundaries = [-90, 100] # as above, for the axial rotation [deg]
+
+        self.strainmap_step = 4         # discretization step used along the model's coordinate [in degrees]
+                                        # By default we set it to 4, as the strain maps are generated from the biomechanical model
+                                        # with this grid accuracy
 
 
-    def return_path(current_node):
+    def return_path(self, current_node):
         path = []
         current = current_node
         while current is not None:
@@ -126,7 +134,7 @@ class Astar:
                     continue
 
                 # Get Node Strain
-                node_strain = strain[node_position[0]][node_position[1]]  #swapped indices here.. wtf? check other things.
+                node_strain = strain[node_position[0]][node_position[1]]
 
                 # Create new node
                 new_node = Node(current_node, node_position, node_strain)
