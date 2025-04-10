@@ -474,7 +474,8 @@ SMap = np.zeros(shape=Slayer.shape, dtype=int)
 SMap[Barrier] = 1
 
 # list the waypoints that we want to traverse
-waypoints = [(10, 10), (20, 31), (35, 22), (10, 10)]
+# waypoints = [(35, 25), (18, 10)]    # for simulated tuning OCP (experiment 4)
+waypoints = [(18, 25), (30, 25), (20, 15), (20, 28)]    # for passive subject (experiment 5)
 
 # Below the original implementation that allows to actually select the waypoints on the strain map
 # ############################ Clickable Figure ###########################
