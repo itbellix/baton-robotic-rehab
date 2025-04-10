@@ -342,6 +342,7 @@ if __name__ == '__main__':
 
                     if experiment == 1:
                         rospy.sleep(6)
+                        goal_index += 1
                     
                     if experiment == 2:
 
@@ -386,9 +387,8 @@ if __name__ == '__main__':
                                 to_module.setActivationLevel(0.91)
                             elif count >= 60:
                                 to_module.setActivationLevel(0.92)
-
-                        # consider next goal
-                        count += 1
+                                
+                            count += 1
 
                 elif perform_A_star:
                     # optimize the trajectory towards the given goal
