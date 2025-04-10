@@ -29,6 +29,9 @@ subject = 'subject1'       # list of available subjects: subject1
 
 setup = 'newLab_facingRobot'        # list of setups: 'OldLab' (configuration that the robot had before 12/12/2023)
 
+translational_stiffness_cart = 550
+rotational_stiffness_cart = 10
+
 # physical parameters related to the experimental setup (they could be different every time)
 #   * l_arm:  (subject-dependent) length of the segment between the glenohumeral joint center 
 #             and the elbow tip, when the elbow of the subject is bent at 90 degrees 
@@ -249,13 +252,15 @@ if experiment == 4: # Execution of A* planning in simulation
 
     strainmap_list_astar = strainmap_graph.tolist()
 
-    Barrier = np.where(strainmap_graph > 2.2)
+    max_strain = 99
+    Barrier = np.where(strainmap_graph > max_strain)
     SMap = np.zeros(shape=strainmap_graph.shape, dtype=int)
     SMap[Barrier] = 1
-
     maze = SMap.tolist()
 
     # usage: astar(maze, start, end, strain)
+    # NOTE: maze is essentially all zeros if planning is allowed everywhere, but we could also include 
+    # obstacles by placing ones in the grid!
 
     # initial state (referred explicitly to the position of the patient's GH joint) 
     # Therapy will start in this position - used to build the NLP structure, and to command first position of the robot
@@ -268,17 +273,69 @@ if experiment == 4: # Execution of A* planning in simulation
     perform_BATON = False
     perform_A_star = True
 
-    # other variables not really used in this experiment
-    N = 1  # control intervals used (control will be constant during each interval)
-    T = 1  # time horizon for the optimization
+    # variables used for interpolation of the resulting path (so that it is comparable to BATON's output)
+    N = 50  # number of references that will be sent
+    T = 5.  # duration of the overall movement 
+
+    # whether speed is estimated and visualized on the strain map during the experiment
     speed_estimate = True
-    constrain_final_position = True
-    constrain_final_velocity = True
-    # set the cost weights
-    gamma_strain = 0        # weight for increase in strain
-    gamma_goal = 0          # weight for distance to goal
-    gamma_velocities = 0    # weight on the coordinates' velocities
-    gamma_acceleration = 0  # weight on the coordinates' acceleration
+
+    # variables that are not really used but we initialize them anyway
+    constrain_final_position = False
+    constrain_final_velocity = False
+
+    gamma_strain = 0
+    gamma_goal = 0
+    gamma_velocities = 0
+    gamma_acceleration = 0
+
+
+if experiment==5:
+    # strainmap file only for visualization purposes
+    file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Passive', 'differentiable_strainmaps_allTendons.pkl')
+
+    # file from which to read the precomputed parameters that define the strainmaps
+    strainmap_graph = np.load(os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Passive', 'All_0_min2AR.npy'))
+
+    strainmap_list_astar = strainmap_graph.tolist()
+
+    max_strain = 99
+    Barrier = np.where(strainmap_graph > max_strain)
+    SMap = np.zeros(shape=strainmap_graph.shape, dtype=int)
+    SMap[Barrier] = 1
+    maze = SMap.tolist()
+    
+    # initial state (referred explicitly to the position of the patient's GH joint) 
+    # Therapy will start in this position - used to build the NLP structure, and to command first position of the robot
+    # x = [pe, pe_dot, se, se_dot, ar, ar_dot], but note that ar and ar_dot are not tracked
+    x_0 = np.deg2rad(np.array([50, 0, 100, 0, 0, 0]))
+
+    # goal states (if more than one, the next one is used once the previous is reached)
+    # here we command multiple ones in sequence to achieve a rather large range of motion
+    x_goal_1 = np.deg2rad(np.array([100, 0, 100, 0, 0, 0]))
+    x_goal_2 = np.deg2rad(np.array([60, 0, 60, 0, 0, 0]))
+    x_goal_3 = np.deg2rad(np.array([60, 0, 110, 0, 0, 0]))
+
+    x_goal = np.vstack((x_goal_1, x_goal_2, x_goal_3))
+
+    perform_BATON = False
+    perform_A_star = True
+
+    # variables used for interpolation of the resulting path (so that it is comparable to BATON's output)
+    N = 50  # number of references that will be sent
+    T = 5.  # duration of the overall movement 
+
+    # whether speed is estimated and visualized on the strain map during the experiment
+    speed_estimate = True
+
+    # variables that are not really used but we initialize them anyway
+    constrain_final_position = False
+    constrain_final_velocity = False
+
+    gamma_strain = 0
+    gamma_goal = 0
+    gamma_velocities = 0
+    gamma_acceleration = 0
 
 
 # -------------------------------------------------------------------------------

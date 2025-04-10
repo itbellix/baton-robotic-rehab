@@ -161,6 +161,35 @@ if __name__ == '__main__':
         # instantiate NLP problem
         nlps_module = utils_TO.nlps_module()
 
+        # define how the dynamics of the model will be provided to the optimizer
+        if use_casadi_function: 
+            # using CasADi function (obtained through OpenSimAD)
+            nlps_module.setSystemDynamics(ca.Function.load(os.path.join(path_to_model, 
+                                                                        model_name_AD)))
+        else:
+            if not with_opensim:
+                RuntimeError("If the dynamics is provided through a callback, the OpenSim module is required.")
+
+            # setting the callback that will provide the dynamics
+            nlps_module.setSystemDynamics(utils_ca.MyOsimCallback('sys_dynamics', 
+                                                                  opensim_model, 
+                                                                  {"enable_fd":True}))
+
+        # initialize the NLP problem with its parameters
+        nlps_module.setTimeHorizonAndDiscretization(N=N, T=T)
+        nlps_module.populateCollocationMatrices(order_polynomials= polynomial_order, collocation_type= collocation_scheme)
+
+        # provide states and controls to the NLP instance
+        nlps_module.initializeStateVariables(x = x, names = ['theta', 'theta_dot', 'psi', 'psi_dot', 'phi', 'phi_dot'])
+        nlps_module.initializeControlVariables(u = u, names= ['tau_theta', 'tau_psi'])
+
+        # set the goal to be reached, and initial condition we are starting from
+        if len(x_goal.shape) == 1:
+            nlps_module.setGoal(goal = x_goal)
+        else:
+            nlps_module.setGoal(goal = x_goal[0,:])
+        nlps_module.setInitialState(x_0 = x_0)
+
         # instantiate the force/torque sensor object
         print("Connecting force-torque sensor...")
         sensor = BotaSerialSensor(experimental_params['ft_sensor_port'], n_readings_calib=1000)
@@ -175,34 +204,6 @@ if __name__ == '__main__':
                                     speed_estimate = speed_estimate,
                                     ft_sensor=sensor,
                                     rmr_solver = rmr_solver)
-
-        # define how the dynamics of the model will be provided to the optimizer
-        if use_casadi_function: 
-            # using CasADi function (obtained through OpenSimAD)
-            to_module.nlps_module.setSystemDynamics(ca.Function.load(os.path.join(path_to_model, 
-                                                                                model_name_AD)))
-        else:
-            # setting the callback that will provide the dynamics
-            to_module.nlps_module.setSystemDynamics(utils_ca.MyOsimCallback('sys_dynamics', 
-                                                                            to_module.opensim_model, 
-                                                                            {"enable_fd":True}))
-            if not with_opensim:
-                RuntimeError("If the dynamics is provided through a callback, the OpenSim module is required.")
-
-        # initialize the NLP problem with its parameters
-        to_module.nlps_module.setTimeHorizonAndDiscretization(N=N, T=T)
-        to_module.nlps_module.populateCollocationMatrices(order_polynomials= polynomial_order, collocation_type= collocation_scheme)
-
-        # provide states and controls to the NLP instance
-        to_module.nlps_module.initializeStateVariables(x = x, names = ['theta', 'theta_dot', 'psi', 'psi_dot', 'phi', 'phi_dot'])
-        to_module.nlps_module.initializeControlVariables(u = u, names= ['tau_theta', 'tau_psi'])
-
-        # set the goal to be reached, and initial condition we are starting from
-        if len(x_goal.shape) == 1:
-            to_module.nlps_module.setGoal(goal = x_goal)
-        else:
-            to_module.nlps_module.setGoal(goal = x_goal[0,:])
-        to_module.nlps_module.setInitialState(x_0 = x_0)
 
         # set the strainmap to operate onto, extracting the information from a file
         if file_strainmaps is not None:
@@ -341,7 +342,6 @@ if __name__ == '__main__':
 
                     if experiment == 1:
                         rospy.sleep(6)
-                        goal_index += 1
                     
                     if experiment == 2:
 
@@ -387,13 +387,16 @@ if __name__ == '__main__':
                             elif count >= 60:
                                 to_module.setActivationLevel(0.92)
 
-                            count += 1
-                elif perform_A_star:
+                        # consider next goal
+                        count += 1
 
-                    if experiment == 4:
-                        # optimize the trajectory towards the given goal
-                        to_module.optimize_trajectory_astar(maze, current_goal, strainmap_list_astar)
-                        previous_request = True         # save the status of the robot request now
+                elif perform_A_star:
+                    # optimize the trajectory towards the given goal
+                    to_module.optimize_trajectory_astar(maze, current_goal, strainmap_list_astar)
+                    previous_request = True         # save the status of the robot request now
+
+                    rospy.sleep(6)
+                    goal_index += 1
 
             
             # if the user wants to interrupt the therapy, or if the last goal position has been reached,

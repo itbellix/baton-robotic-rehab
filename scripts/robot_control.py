@@ -618,8 +618,9 @@ if __name__ == "__main__":
                 # 's' : start the therapy
                 if pressed_key.get() == "s":
                     if control_module.initial_pose_reached:
-                        # set experimentally tuned stiffness of np.array([550, 550, 550, 15, 15, 4])
-                        control_module.reconf_client_cart.update_configuration({'separate_axis':False, 'translational_stiffness':550, 'rotational_stiffness':10})
+                        control_module.reconf_client_cart.update_configuration({'separate_axis':False, 
+                                                                                'translational_stiffness':translational_stiffness_cart, 
+                                                                                'rotational_stiffness':rotational_stiffness_cart})
 
                         rospy.loginfo("Start to follow optimal reference")
                         control_module.trackReferenceStream(True)

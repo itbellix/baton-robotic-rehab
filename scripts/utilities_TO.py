@@ -16,6 +16,7 @@ import numpy as np
 import rospy
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
+from scipy.interpolate import interp1d
 import os
 import time
 import threading
@@ -72,7 +73,7 @@ class TO_module:
         self.avg_nlp_time = 0
         self.failed_count = 0
 
-        self.astar_planner = astar.Astar()         # A* planner for the strain map (as implemented in the RAL paper from Micah)
+        self.astar_planner = astar.Astar(nlps.N)    # A* planner for the strain map (as implemented in the RAL paper from Micah)
 
         # parameters regarding the muscle activation
         self.rmr_solver = rmr_solver                # instance of the RMR solver for estimating muscle activations in real time
@@ -293,7 +294,7 @@ class TO_module:
         # modify the reference along the Z direction, to account for the increased interaction force
         # due to the human arm resting on the robot. We do this only if we are not in simulation.
         if torque_ref is not None:
-            k_z = ee_stiffness[2]
+            k_z = translational_stiffness_cart
             se_estimated = self.state_values_current[2]
             torque_se = torque_ref[1]
             z_current = self.current_ee_pose[2]
@@ -635,28 +636,54 @@ class TO_module:
         # initialize flag to monitor if the solve found a solution
         failed = 0
 
-        init_pose = tuple(np.round(self.state_values_current[[0,2]]).astype(int))   # initial pose of the shoulder(pe, se)
-        end_pose = tuple(np.round(x_goal[[0,2]]).astype(int))                       # goal pose of the shoulder(pe, se)
+        # project initial and end human pose on the strainmap grid
+        pe_init, se_init = np.rad2deg(self.state_values_current[[0,2]])
+        pe_init_grid = np.round((pe_init - self.astar_planner.pe_boundaries[0])/self.astar_planner.strainmap_step).astype(int)
+        se_init_grid = np.round((se_init - self.astar_planner.se_boundaries[0])/self.astar_planner.strainmap_step).astype(int)
+
+        pe_goal, se_goal = np.rad2deg(x_goal[[0,2]])
+        pe_goal_grid = np.round((pe_goal - self.astar_planner.pe_boundaries[0])/self.astar_planner.strainmap_step).astype(int)
+        se_goal_grid = np.round((se_goal - self.astar_planner.se_boundaries[0])/self.astar_planner.strainmap_step).astype(int)
+
+        init_pose = tuple((pe_init_grid, se_init_grid))   # initial pose of the shoulder(pe, se)
+        end_pose = tuple((pe_goal_grid, se_goal_grid))                       # goal pose of the shoulder(pe, se)
 
         fullpath = self.astar_planner.plan(maze, init_pose, end_pose, strainmap_list)
-
-        pathpnts = ([t[0] for t in fullpath], [t[1] for t in fullpath])
-        pe = pathpnts[0]
-        se = pathpnts[1]
-        ar = np.ones(np.shape(pe))*self.state_values_current[4]  # axial rotation is constant
         
-        planned_states = np.zeros((self.nlps_module.dim_x, len(pe)))
-        planned_states[0,:] = pe
-        planned_states[2,:] = se
-        planned_states[4,:] = ar
+        if fullpath is None:
+            # something went wrong...
+            failed = 1
+        else:
+            # we have a path, extract the angles from it
+            pathpnts = ([t[0] for t in fullpath], [t[1] for t in fullpath])
+            pe = np.deg2rad(np.array(pathpnts[0]) * self.astar_planner.strainmap_step + self.astar_planner.pe_boundaries[0])
+            se = np.deg2rad(np.array(pathpnts[1]) * self.astar_planner.strainmap_step + self.astar_planner.se_boundaries[0])
+            path = np.vstack((pe,se))
 
-        planned_controls = np.zeros((self.nlps_module.dim_u, len(pe)-1))    # A* cannot return the controls!
+            # now interpolate the path to obtain same number of datapoints as the solution of the NLP
+            diffs = np.diff(path, axis=1)
+            segment_lengths = np.linalg.norm(diffs, axis=0)
+            arc_length = np.concatenate([[0], np.cumsum(segment_lengths)])
 
-        # update the optimal values stored
-        with self.x_opt_lock:
-            self.x_opt = planned_states
-            self.u_opt = planned_controls
+            f_interp = interp1d(arc_length, path, kind='linear', axis=1)    # interpolate based on arc length
 
+            arc_length_new = np.linspace(0, arc_length[-1], self.astar_planner.N_interp)
+
+            path_upsampled = f_interp(arc_length_new)       # get upsampled path
+
+            ar_upsampled = np.ones(self.astar_planner.N_interp)*self.state_values_current[4]    # axial rotation is constant
+            
+            planned_states = np.zeros((self.nlps_module.dim_x, self.astar_planner.N_interp))    # A* cannot return velocities!
+            planned_states[0,:] = path_upsampled[0,:]
+            planned_states[2,:] = path_upsampled[1,:]
+            planned_states[4,:] = ar_upsampled              # ar is constant
+
+            planned_controls = None    # A* cannot return the controls!
+
+            # update the optimal values stored, so that they are commanded to the robot
+            with self.x_opt_lock:
+                self.x_opt = planned_states
+                self.u_opt = planned_controls
 
 
     def publish_continuous_trajectory(self, p_gh_in_base, rot_ee_in_base_0, dist_shoulder_ee):
