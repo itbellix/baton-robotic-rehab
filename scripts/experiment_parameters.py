@@ -72,8 +72,9 @@ if setup=='newLab_facingRobot':
     ar_offset = sensor_ee_offset + elbow_sensor_angle
 
     # corresponding rotation matrixes
-    sensor_R_ee = R.from_euler('z', sensor_ee_offset) # rotation matrix expressing the orientation of the sensor in the EE frame
-    elbow_R_sensor = R.from_euler('z', elbow_sensor_angle) # rotation matrix expressing the orientation of the brace/elbow in the sensor frame
+    sensor_R_ee = R.from_euler('z', sensor_ee_offset)       # rotation matrix expressing the orientation of the sensor in the EE frame
+    elbow_R_sensor = R.from_euler('z', elbow_sensor_angle)  # rotation matrix expressing the orientation of the brace/elbow in the sensor frame
+    ulna_R_sensor = R.from_euler('y', np.pi/2) * elbow_R_sensor  # rotation matrix transforming the F/T sensor data in ulna frame (for RMR solver)
 
     # let's use orientation of the brace to find the center of mass of the load in the sensor frame
     brace_com = elbow_R_sensor.as_matrix() @ brace_com     # position of the center of mass of the brace expressed in the sensor's frame[m]
@@ -356,6 +357,7 @@ experimental_params['brace_com'] = brace_com
 experimental_params['sensor_R_ee'] = sensor_R_ee
 experimental_params['elbow_R_sensor'] = elbow_R_sensor
 experimental_params['ar_offset'] = ar_offset
+experimental_params['ulna_R_sensor'] = ulna_R_sensor
 # -------------------------------------------------------------------------------
 # names of the ROS topics on which the shared communication between biomechanical-based optimization and robot control will happen
 shared_ros_topics = {}

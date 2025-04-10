@@ -739,19 +739,26 @@ class TO_module:
                 velocity_sh = self.state_values_current[1::2]
                 acceleration_sh = self.state_dot_current[1::2]
                 
-                # # retrieve the interaction wrenches from the force-torque sensor
-                # if self.ft_sensor.is_functional:
-                #     # get the interaction wrench from the force-torque sensor
-                #     interaction_wrench = np.array([self.ft_sensor.current_reading.fx,
-                #                                 self.ft_sensor.current_reading.fy,
-                #                                 self.ft_sensor.current_reading.fz,
-                #                                 self.ft_sensor.current_reading.mx,
-                #                                 self.ft_sensor.current_reading.my,
-                #                                 self.ft_sensor.current_reading.mz])
-                # else:
-                #     interaction_wrench = np.zeros(6)
-                # # TODO: this is still work in progress
-                # # estimate the muscle activation level for all the muscles in the model
+                # retrieve the interaction wrenches from the force-torque sensor
+                if self.ft_sensor.is_functional:
+                    # get the interaction wrench from the force-torque sensor
+                    # note that we set fz = mx = my = 0 as only the other values affect muscle
+                    # activation when the arm is locked in the brace, and the GH center does not move.
+                    interaction_wrench_sensor_frame = np.array([self.ft_sensor.current_reading.fx,
+                                                                self.ft_sensor.current_reading.fy,
+                                                                0,
+                                                                0,
+                                                                0,
+                                                                self.ft_sensor.current_reading.mz])
+                    interaction_forces = experimental_params['ulna_R_sensor'].as_matrix() @ interaction_wrench_sensor_frame[0:3]
+                    interaction_torques = experimental_params['ulna_R_sensor'].as_matrix() @ interaction_wrench_sensor_frame[3:6]
+                    interaction_wrench = np.hstack((interaction_forces, interaction_torques))
+
+                else:
+                    interaction_wrench = np.zeros(6)
+
+                # TODO: this is still work in progress
+                # estimate the muscle activation level for all the muscles in the model
                 # current_activation, _, info = self.rmr_solver.solve(time.time(), position_sh, velocity_sh, acceleration_sh, interaction_wrench)
 
                 # # publish the activation level (for debugging and logging)
@@ -759,10 +766,10 @@ class TO_module:
                 # message.data = current_activation
                 # self.pub_activation.publish(message)
 
-                # # publish the interaction wrenches after gravity compensation (for debugging and logging)
-                # message = Float32MultiArray()
-                # message.data = interaction_wrench
-                # self.pub_compensated_wrench.publish(message)
+                # publish the interaction wrenches after gravity compensation (for debugging and logging)
+                message = Float32MultiArray()
+                message.data = interaction_wrench
+                self.pub_compensated_wrench.publish(message)
 
             # sleep for a while
             self.ros_rate.sleep()
