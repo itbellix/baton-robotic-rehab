@@ -156,7 +156,7 @@ class RobotControlModule:
             self.ma_window = 10                         # a moving average filter with window of 10 samples is used for vel and acc data
             self.alpha_a = 0.15                         # weight of the exponential moving average filter for human acceleration
 
-        self.past_human_state_est = np.zeros((9, self.ma_window))   # history of the human state estimation 
+        self.past_human_state_est = np.zeros((9, self.ma_window))   # history of the human state estimation, last elements are most recent
                                                                     # (pe, pe_dot, se, se_dot, ar, ar_dot, pe_ddot, se_ddot, ar_ddot)
         self.last_timestamp_estimation = None                       # timestamp of the last human pose estimation
 
@@ -274,20 +274,20 @@ class RobotControlModule:
 
             # NOTE: since this callback is executed quite fast, we do not bother to initialize the filter state
             # apply exponential filter on the estimated human pose
-            pe_filt = self.alpha_p * pe + (1-self.alpha_p) * self.past_human_state_est[0, 0]
-            se_filt = self.alpha_p * se + (1-self.alpha_p) * self.past_human_state_est[2, 0]
-            ar_filt = self.alpha_p * ar + (1-self.alpha_p) * self.past_human_state_est[4, 0]
+            pe_filt = self.alpha_p * pe + (1-self.alpha_p) * self.past_human_state_est[0, -1]
+            se_filt = self.alpha_p * se + (1-self.alpha_p) * self.past_human_state_est[2, -1]
+            ar_filt = self.alpha_p * ar + (1-self.alpha_p) * self.past_human_state_est[4, -1]
 
             # compute filtered velocities through moving average filter (first we put the raw variable, then filter it, then save it again)
-            self.past_human_state_est[1, 0] = pe_dot
-            self.past_human_state_est[3, 0] = se_dot
-            self.past_human_state_est[5, 0] = ar_dot
+            self.past_human_state_est[1, -1] = pe_dot
+            self.past_human_state_est[3, -1] = se_dot
+            self.past_human_state_est[5, -1] = ar_dot
             pe_dot_filt = np.mean(self.past_human_state_est[1, :])
             se_dot_filt = np.mean(self.past_human_state_est[3, :])
             ar_dot_filt = np.mean(self.past_human_state_est[5, :])
-            self.past_human_state_est[1, 0] = pe_dot_filt
-            self.past_human_state_est[3, 0] = se_dot_filt
-            self.past_human_state_est[5, 0] = ar_dot_filt
+            self.past_human_state_est[1, -1] = pe_dot_filt
+            self.past_human_state_est[3, -1] = se_dot_filt
+            self.past_human_state_est[5, -1] = ar_dot_filt
 
             # retrieve the human accelerations by differentiating the velocities
             pe_ddot = np.gradient(self.past_human_state_est[1, :], 1/self.fs)[0]
@@ -295,18 +295,18 @@ class RobotControlModule:
             ar_ddot = np.gradient(self.past_human_state_est[5, :], 1/self.fs)[0]
 
             # apply exponential filter on the estimated human acceleration
-            pe_ddot_filt = self.alpha_a * pe_ddot + (1-self.alpha_a) * self.past_human_state_est[6, 0]
-            se_ddot_filt = self.alpha_a * se_ddot + (1-self.alpha_a) * self.past_human_state_est[7, 0]
-            ar_ddot_filt = self.alpha_a * ar_ddot + (1-self.alpha_a) * self.past_human_state_est[8, 0]
+            pe_ddot_filt = self.alpha_a * pe_ddot + (1-self.alpha_a) * self.past_human_state_est[6, -1]
+            se_ddot_filt = self.alpha_a * se_ddot + (1-self.alpha_a) * self.past_human_state_est[7, -1]
+            ar_ddot_filt = self.alpha_a * ar_ddot + (1-self.alpha_a) * self.past_human_state_est[8, -1]
 
             # update last estimated pose
-            self.past_human_state_est[:, 1:] = self.past_human_state_est[:, :-1]
-            self.past_human_state_est[:, 0] = np.array([pe_filt, pe_dot_filt, se_filt, se_dot_filt, ar_filt, ar_dot_filt, pe_ddot_filt, se_ddot_filt, ar_ddot_filt])
+            self.past_human_state_est[:, :-1] = self.past_human_state_est[:, 1:]
+            self.past_human_state_est[:, -1] = np.array([pe_filt, pe_dot_filt, se_filt, se_dot_filt, ar_filt, ar_dot_filt, pe_ddot_filt, se_ddot_filt, ar_ddot_filt])
             self.last_timestamp_estimation = timestamp_msg      # used as the timestamp of the previous information
 
             # build the message and fill it with information
             message_filt = Float32MultiArray()
-            message_filt.data = np.concatenate((self.past_human_state_est[:,0], orientation_quat, cart_pose_ee))
+            message_filt.data = np.concatenate((self.past_human_state_est[:,-1], orientation_quat, cart_pose_ee))
 
             # publish also unfiltered reference for debugging (TODO: remove)
             message_unfiltered = Float32MultiArray()
