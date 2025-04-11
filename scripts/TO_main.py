@@ -94,8 +94,7 @@ if __name__ == '__main__':
                                    constrainActDyn=True, 
                                    constrainGHjoint=True, 
                                    actuatorReserveBounds=[-1e6, 1e6], 
-                                   prescribedForceIndex = [opensim_model.getForceSet().getIndex(prescribed_force_ulna)],
-                                   visualize = True)
+                                   prescribedForceIndex = [opensim_model.getForceSet().getIndex(prescribed_force_ulna)])
             rmr_solver.setObjective(objective)
 
             # debug
