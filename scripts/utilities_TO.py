@@ -1963,6 +1963,12 @@ class RealTimeStrainMapVisualizer:
 
         pygame.display.flip()
 
+        # Process window events to avoid non responsiveness of the window
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+
 
     def quit(self):
         pygame.quit()
