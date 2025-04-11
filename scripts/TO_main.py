@@ -97,26 +97,6 @@ if __name__ == '__main__':
                                    prescribedForceIndex = [opensim_model.getForceSet().getIndex(prescribed_force_ulna)])
             rmr_solver.setObjective(objective)
 
-            # debug
-            exp_wrench = np.zeros((6, 22))
-            exp_wrench[2,0:] = 70 * np.linspace(-1, 1, 22)
-            # exp_wrench[3,0:] = 5 * np.linspace(-1, 1, 22)
-
-            position_sh = np.deg2rad(np.array([35, 89, 13]))
-            velocity_sh = np.zeros((3, 1))
-            acceleration_sh = np.zeros((3,1))
-
-            current_activation = np.zeros((25, 22))
-
-            for i in range(22):
-                if i==21:
-                    aux = 0
-                current_activation[:,i], _, _ = rmr_solver.solve(time = time.time(), 
-                                                                position = position_sh.squeeze(), 
-                                                                speed = velocity_sh.squeeze(), 
-                                                                acceleration = acceleration_sh.squeeze(), 
-                                                                values_prescribed_forces = exp_wrench[:,i])
-
         ## PARAMETERS -----------------------------------------------------------------------------------------------
         # import the parameters for the experiment as defined in e xperiment_parameters.py
         from experiment_parameters import *     # this contains the experimental_params and the shared_ros_topics
