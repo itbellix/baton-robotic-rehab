@@ -32,11 +32,16 @@ import pickle
 from botasensone import BotaSerialSensor
 from RMRsolver import RMRsolver
 import utilsObjectives as utilsObj
+import warnings
 
 # import parser
 import argparse
 
 if __name__ == '__main__':
+
+    # we will suppress runtime warnings to keep terminal output clean
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+
     try:
         # check if we are running in simulation or not
         parser = argparse.ArgumentParser(description="Script that runs the Trajectory Optimization")
@@ -89,8 +94,29 @@ if __name__ == '__main__':
                                    constrainActDyn=True, 
                                    constrainGHjoint=True, 
                                    actuatorReserveBounds=[-1e6, 1e6], 
-                                   prescribedForceIndex = [opensim_model.getForceSet().getIndex(prescribed_force_ulna)])
+                                   prescribedForceIndex = [opensim_model.getForceSet().getIndex(prescribed_force_ulna)],
+                                   visualize = True)
             rmr_solver.setObjective(objective)
+
+            # debug
+            exp_wrench = np.zeros((6, 22))
+            exp_wrench[2,0:] = 70 * np.linspace(-1, 1, 22)
+            # exp_wrench[3,0:] = 5 * np.linspace(-1, 1, 22)
+
+            position_sh = np.deg2rad(np.array([35, 89, 13]))
+            velocity_sh = np.zeros((3, 1))
+            acceleration_sh = np.zeros((3,1))
+
+            current_activation = np.zeros((25, 22))
+
+            for i in range(22):
+                if i==21:
+                    aux = 0
+                current_activation[:,i], _, _ = rmr_solver.solve(time = time.time(), 
+                                                                position = position_sh.squeeze(), 
+                                                                speed = velocity_sh.squeeze(), 
+                                                                acceleration = acceleration_sh.squeeze(), 
+                                                                values_prescribed_forces = exp_wrench[:,i])
 
         ## PARAMETERS -----------------------------------------------------------------------------------------------
         # import the parameters for the experiment as defined in e xperiment_parameters.py
