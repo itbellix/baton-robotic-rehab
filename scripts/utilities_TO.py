@@ -752,14 +752,19 @@ class TO_module:
                                                                 self.ft_sensor.current_reading.mz])
                     interaction_forces = experimental_params['ulna_R_sensor'].as_matrix() @ interaction_wrench_sensor_frame[0:3]
                     interaction_torques = experimental_params['ulna_R_sensor'].as_matrix() @ interaction_wrench_sensor_frame[3:6]
-                    interaction_wrench = np.hstack((interaction_forces, interaction_torques))
+                    interaction_wrench = - np.hstack((interaction_forces, interaction_torques)) # note the minus sign, as the opposite of what the
+                                                                                                # sensor measures is felt by the human body
 
                 else:
                     interaction_wrench = np.zeros(6)
 
                 # TODO: this is still work in progress
                 # estimate the muscle activation level for all the muscles in the model
-                # current_activation, _, info = self.rmr_solver.solve(time.time(), position_sh, velocity_sh, acceleration_sh, interaction_wrench)
+                current_activation, _, info = self.rmr_solver.solve(time = time.time(), 
+                                                                    position = position_sh, 
+                                                                    speed = velocity_sh, 
+                                                                    acceleration = acceleration_sh, 
+                                                                    values_prescribed_forces = interaction_wrench)
 
                 # # publish the activation level (for debugging and logging)
                 # message = Float32MultiArray()
