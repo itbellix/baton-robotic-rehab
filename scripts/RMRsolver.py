@@ -331,6 +331,8 @@ class RMRsolver:
         # apply the prescribed forces to the model
         if values_prescribed_forces is not None:        # check that there are values, otherwise the default ones specified at model creation would be used
             values_prescribed_forces = np.asarray(values_prescribed_forces)
+            if values_prescribed_forces.ndim ==1:
+                values_prescribed_forces = values_prescribed_forces[:,np.newaxis]
             assert values_prescribed_forces.shape[0] == 6, ("Incorrect size for PrescribedForce values.\n"
                                                             "Please provide a 6-element column for every force (f_x, f_y, f_z, tau_x, tau_y, tau_z)")
             if len(self.prescribedForces)>0:            # check that the model contains prescribed forces
@@ -439,11 +441,11 @@ class RMRsolver:
         # noActAcc = utilsRMR.getInducedAcceleration(np.zeros(self.actuatorNum), paramsAcc)
         # constraintViolation = activeAcc - noActAcc - constrAcc_b
 
-        constraintViolation = constrAcc_A.dot(activation) - constrAcc_b
-        constraintViolationRelative = constraintViolation/constrAcc_b/xDeltaUsed
-
         # Print solver log if enabled
         if self.settings['solveInfo']:
+            constraintViolation = constrAcc_A.dot(activation) - constrAcc_b
+            constraintViolationRelative = constraintViolation/constrAcc_b/xDeltaUsed
+
             print("Acceleration constraint violation: (>=1: no violation)")
             for i in range(len(constraintViolationRelative)):
                 print(f"{constraintViolationRelative[i]:5.2f}")
