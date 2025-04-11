@@ -11,6 +11,16 @@
 				<scale_factors>0.20000000000000001 0.20000000000000001 0.20000000000000001</scale_factors>
 			</FrameGeometry>
 		</Ground>
+		<!--Acceleration due to gravity, expressed in ground.-->
+		<gravity>0 -9.8066499999999994 0</gravity>
+		<!--Credits (e.g., model author names) associated with the model.-->
+		<credits>Ajay Seth, Meilin Dong, Ricardo Matias, Scott Delp. Parameters from van der Helm and Klein-Breteler</credits>
+		<!--Publications and references associated with the model.-->
+		<publications>Frontiers in Neurorobotics: in In Press DSEM: van der Helm 1994 Klein-Breteler et al. 1996.</publications>
+		<!--Units for all lengths.-->
+		<length_units>meters</length_units>
+		<!--Units for all forces.-->
+		<force_units>N</force_units>
 		<!--List of bodies that make up this model.-->
 		<BodySet name="bodyset">
 			<objects>
