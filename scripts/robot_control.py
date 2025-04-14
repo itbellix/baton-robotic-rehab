@@ -578,11 +578,21 @@ if __name__ == "__main__":
                                 control_module.active_controller = 'CIC'
 
                             # add nullspace control on robot's elbow
-                            control_module.reconf_client_cart.update_configuration({'cart_nullspace_control': True, 
-                                                                            'elbow_ref_z':0.55, 
-                                                                            'nullspace_stiffness_elbow_x':10,
-                                                                            'nullspace_stiffness_elbow_y':10,
-                                                                            'nullspace_stiffness_elbow_z':10})
+                            control_module.reconf_client_cart.update_configuration({'nullspace_control': True, 
+                                                                                    'q_nullspace_joint_1':0, 
+                                                                                    'nullspace_stiffness_joint_1':0,
+                                                                                    'q_nullspace_joint_2':0, 
+                                                                                    'nullspace_stiffness_joint_2':0,
+                                                                                    'q_nullspace_joint_3':0, 
+                                                                                    'nullspace_stiffness_joint_3':0,
+                                                                                    'q_nullspace_joint_4':0, 
+                                                                                    'nullspace_stiffness_joint_4':0,    # joint 4 affects EE precision
+                                                                                    'q_nullspace_joint_5':1.5, 
+                                                                                    'nullspace_stiffness_joint_5':1,
+                                                                                    'q_nullspace_joint_6':0, 
+                                                                                    'nullspace_stiffness_joint_6':0,
+                                                                                    'q_nullspace_joint_7':0, 
+                                                                                    'nullspace_stiffness_joint_7':0})
                             
                             if experiment == 1:
                                 # with the old controller I would add a nullspace joint controller also on the last links (to keep them close to 0)
