@@ -311,7 +311,7 @@ class TO_module:
             torque_se = torque_ref[1]
             z_current = self.current_ee_pose[2]
 
-            new_z_ref = z_current + torque_se*torque_scaling/(k_z * experimental_params['L_tot'] * np.sin(se_estimated)) + 0.2*(ref_cart_point[2] - z_current)
+            new_z_ref = z_current + torque_se*torque_scaling/(k_z * experimental_params['L_tot'] * np.sin(se_estimated)) + 1*(ref_cart_point[2] - z_current)
             
             # append new z reference (in this way, we can filter both the new and the old)
             ref_cart_point = np.hstack((ref_cart_point, new_z_ref))
