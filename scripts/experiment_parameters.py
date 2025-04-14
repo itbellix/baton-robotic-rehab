@@ -14,7 +14,8 @@ from scipy.spatial.transform import Rotation as R
 experiment = 4      # 1: Passive human subject (strain map is only position-dependent)
                     # 2: Active human subject (strain maps change with muscle activation)
                     # 3: tuning of the cost function weights, in simulation, for experiment #1
-                    # 4: execution of A* planning in simulation
+                    # 4: execution of A* planning in the same conditions as experiment 3
+                    # 5: execution of A* planning in the same conditions as experiment 1
 #-------------------------------------------------------------------------
 
 # define the required paths
