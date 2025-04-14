@@ -582,9 +582,9 @@ if __name__ == "__main__":
                                                                                     'q_nullspace_joint_1':0, 
                                                                                     'nullspace_stiffness_joint_1':0,
                                                                                     'q_nullspace_joint_2':0, 
-                                                                                    'nullspace_stiffness_joint_2':0,
-                                                                                    'q_nullspace_joint_3':0, 
-                                                                                    'nullspace_stiffness_joint_3':0,
+                                                                                    'nullspace_stiffness_joint_2':0.3,
+                                                                                    'q_nullspace_joint_3':np.pi/4, 
+                                                                                    'nullspace_stiffness_joint_3':0.3,
                                                                                     'q_nullspace_joint_4':0, 
                                                                                     'nullspace_stiffness_joint_4':0,    # joint 4 affects EE precision
                                                                                     'q_nullspace_joint_5':1.5, 
