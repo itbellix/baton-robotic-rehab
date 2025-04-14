@@ -9,6 +9,7 @@
 
 <launch>
     <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${node}] [${time}]: ${message}"/>
+    <env name="PYTHONWARNINGS" value="ignore::DeprecationWarning"/>
 
     <!-- Arguments -->
     <arg name="paused" default="false"/>
