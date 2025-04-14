@@ -66,7 +66,7 @@ def generate_approximated_strainmap(file_strainmaps, ar_value):
 def main():
     # define the required paths
     code_path = os.path.dirname(os.path.realpath(__file__))     # getting path to where this script resides
-    path_to_repo = os.path.join(code_path, '..', '..')          # getting path to the repository
+    path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
     path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags')
 
     bag_file_name = '2024-06-20-09-48-38.bag'
