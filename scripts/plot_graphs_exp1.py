@@ -9,6 +9,7 @@ from spatialmath import SO3
 import numpy as np
 import rosbag
 from scipy.spatial.transform import Rotation as R
+from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 
 num_params = 6
@@ -183,7 +184,7 @@ def main():
 
     # Now, let's filter the data to retain only the interesting part of the experiment
     # (i.e., when the subject is wearing the brace properly and the robot is moving)
-    init_time = xyz_curr[int(xyz_curr.shape[0]/100*55), -1]         # identify initial timestep
+    init_time = xyz_curr[int(xyz_curr.shape[0]/100*5), -1]         # identify initial timestep
     end_time = xyz_curr[int(xyz_curr.shape[0]/100*90), -1] - init_time # identify final timestep
 
     estimated_shoulder_state[:,-1] = estimated_shoulder_state[:,-1] - init_time   # center time values starting at initial time
@@ -257,15 +258,15 @@ def main():
     step = 0.05
     num_samples = 51
     time_beginning_1 = optimal_trajectory[6,-1]
-    index_beginning_1 = np.where(estimated_shoulder_state[:,-1]-time_beginning_1>-2e-3)[0][0]
+    index_beginning_1 = np.where(estimated_shoulder_state[:,-1]-time_beginning_1>-4e-3)[0][0]
     position_beginning_1 = np.rad2deg(estimated_shoulder_state[index_beginning_1, [0, 2]])
 
     time_beginning_2 = optimal_trajectory[12,-1]
-    index_beginning_2 = np.where(abs(estimated_shoulder_state[:,-1]-time_beginning_2)<2e-3)[0][0]
+    index_beginning_2 = np.where(abs(estimated_shoulder_state[:,-1]-time_beginning_2)<4e-3)[0][0]
     position_beginning_2 = np.rad2deg(estimated_shoulder_state[index_beginning_2, [0, 2]])
 
     time_beginning_3 = optimal_trajectory[18,-1]
-    index_beginning_3 = np.where(abs(estimated_shoulder_state[:,-1]-time_beginning_3)<2e-3)[0][0]
+    index_beginning_3 = np.where(abs(estimated_shoulder_state[:,-1]-time_beginning_3)<4e-3)[0][0]
     position_beginning_3 = np.rad2deg(estimated_shoulder_state[index_beginning_3, [0, 2]])
 
     position_end = np.rad2deg(estimated_shoulder_state[-1, [0, 2]])
@@ -456,9 +457,18 @@ def main():
 
     # visualize magnitude of interaction force
     if interaction_force_magnitude is not None:
+        fs = 1/(interaction_force_magnitude[1,-1] - interaction_force_magnitude[0, -1])
+        cutoff = 20
+        order = 2
+        nyquist = 0.5 * fs
+        normal_cutoff = cutoff / nyquist
+        b, a = butter(order, normal_cutoff, btype='low', analog=False)
+        interaction_force_magnitude_filt = filtfilt(b, a, interaction_force_magnitude[:,0])
+
         fig = plt.figure()
         ax = fig.add_subplot()
         ax.plot(interaction_force_magnitude[:,-1], interaction_force_magnitude[:,0])
+        ax.plot(interaction_force_magnitude[:,-1], interaction_force_magnitude_filt)
         ax.set_ylabel('[N]')
         ax.set_title('Interaction force')
 
