@@ -207,7 +207,8 @@ class TO_module:
             if isinstance(params_dict['all_params_gaussians'][0], list):
                 self.varying_activation = True
         else:
-            self.varying_activation = "override"      # hack to allow us to prescribe an activation level
+            self.varying_activation = "override"    # we can prescribe an arbitrary strain-map at runtime 
+                                                    # (used only in simulated experiment 2 with tendon=custom_1)
 
     
     def setActivationBounds(self, max_activation, min_activation, delta_activation):
@@ -750,7 +751,7 @@ class TO_module:
         - the interaction wrenches measured by the force-torque sensor
         """
         while not rospy.is_shutdown():
-            if self.flag_receiving_shoulder_pose:
+            if self.flag_receiving_shoulder_pose and self.varying_activation:
                 # retrieve position, velocity and acceleration of the shoulder DoFs (order is always pe, se, ar)
                 position_sh = self.state_values_current[0::2]
                 velocity_sh = self.state_values_current[1::2]
@@ -775,7 +776,6 @@ class TO_module:
                 else:
                     interaction_wrench = np.zeros(6)
 
-                # TODO: this is still work in progress
                 # estimate the muscle activation level for all the muscles in the model
                 current_activation, _, info = self.rmr_solver.solve(time = time.time(), 
                                                                     position = position_sh, 
@@ -783,10 +783,12 @@ class TO_module:
                                                                     acceleration = acceleration_sh, 
                                                                     values_prescribed_forces = interaction_wrench)
 
-                # # publish the activation level (for debugging and logging)
-                # message = Float32MultiArray()
-                # message.data = current_activation
-                # self.pub_activation.publish(message)
+                self.setActivationLevel(current_activation[18])         # set the activation level of the supraspinatus anterior (SSPA)
+
+                # publish the activation level (for debugging and logging)
+                message = Float32MultiArray()
+                message.data = current_activation
+                self.pub_activation.publish(message)
 
                 # publish the interaction wrenches after gravity compensation (for debugging and logging)
                 message = Float32MultiArray()
