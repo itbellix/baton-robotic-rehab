@@ -703,6 +703,12 @@ class TO_module:
                 self.x_opt = planned_states
                 self.u_opt = planned_controls
 
+            # publish the trajectory for logging and debugging
+            message = Float32MultiArray()
+            message.data = planned_states.flatten()
+            self.pub_optimization_output.publish(message)
+
+
 
     def publish_continuous_trajectory(self, p_gh_in_base, rot_ee_in_base_0, dist_shoulder_ee):
         """
