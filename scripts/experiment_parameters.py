@@ -11,7 +11,7 @@ from scipy.spatial.transform import Rotation as R
 
 #-------------------------------------------------------------------------
 # choose which experiment to perform
-experiment = 4      # 1: Passive human subject (strain map is only position-dependent)
+experiment = 1      # 1: Passive human subject (strain map is only position-dependent)
                     # 2: Active human subject (strain maps change with muscle activation)
                     # 3: tuning of the cost function weights, in simulation, for experiment #1
                     # 4: execution of A* planning in the same conditions as experiment 3
@@ -30,8 +30,8 @@ subject = 'subject1'       # list of available subjects: subject1
 
 setup = 'newLab_facingRobot'        # list of setups: 'OldLab' (configuration that the robot had before 12/12/2023)
 
-translational_stiffness_cart = 550
-rotational_stiffness_cart = 10
+translational_stiffness_cart = 900
+rotational_stiffness_cart = 15
 
 # physical parameters related to the experimental setup (they could be different every time)
 #   * l_arm:  (subject-dependent) length of the segment between the glenohumeral joint center 
