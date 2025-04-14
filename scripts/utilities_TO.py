@@ -102,6 +102,8 @@ class TO_module:
         self.alpha_r = 0.7                        # set the weight used in the exponential moving average filter
         self.filter_initialized = False         # has the filter been initialized already?
 
+        self.last_x_cmd = None                  # store the last commanded human state (corresponds to last_cart_ee_cmd and last rotation_ee_cmd)
+
         # ROS part
         # initialize ROS node and set required frequency
         rospy.init_node('TO_module')
@@ -281,6 +283,16 @@ class TO_module:
         se = shoulder_pose_ref[1]
         ar = shoulder_pose_ref[2]
 
+        # check if we have commanded other poses before. If so, set torque scaling parameter
+        if self.last_x_cmd is not None:
+            if se>self.last_x_cmd[1]:
+                torque_scaling = 1.2
+            else:
+                torque_scaling = 0.8
+        else:
+            torque_scaling = 1
+
+
         # define the required rotations
         base_R_elb = base_R_sh*R.from_euler('y', pe)*R.from_euler('x', -se)*R.from_euler('y', ar-ar_offset)
 
@@ -299,7 +311,7 @@ class TO_module:
             torque_se = torque_ref[1]
             z_current = self.current_ee_pose[2]
 
-            new_z_ref = z_current + torque_se/(k_z * experimental_params['L_tot'] * np.sin(se_estimated))
+            new_z_ref = z_current + torque_se*torque_scaling/(k_z * experimental_params['L_tot'] * np.sin(se_estimated)) + 0.2*(ref_cart_point[2] - z_current)
             
             # append new z reference (in this way, we can filter both the new and the old)
             ref_cart_point = np.hstack((ref_cart_point, new_z_ref))
@@ -320,13 +332,13 @@ class TO_module:
         # substitute the old (uncorrected) z reference with the new one
         if torque_ref is not None:
             if self.simulation == 'false':
-                alternative_z_ref = np.atleast_2d(ref_cart_point[2])    # save the filtered old (uncorrected) ref
-                ref_cart_point = np.delete(ref_cart_point, [2])         # now ref_cart point contains [x,y, gravity_compensated_z] filtered
+                alternative_z_ref = ref_cart_point[2]           # save the filtered old (uncorrected) ref
+                ref_cart_point = np.delete(ref_cart_point, [2]) # now ref_cart point contains [x,y, gravity_compensated_z] filtered
             else:
-                alternative_z_ref = np.atleast_2d(ref_cart_point[3])    # save the gravity compensated reference (unused)
-                ref_cart_point = np.delete(ref_cart_point, [3])         # now ref_cart point contains [x,y, gravity_uncompensated_z] filtered
+                alternative_z_ref = ref_cart_point[3]           # save the gravity compensated reference (unused)
+                ref_cart_point = np.delete(ref_cart_point, [3]) # now ref_cart point contains [x,y, gravity_uncompensated_z] filtered
         else:
-            alternative_z_ref = np.atleast_2d(np.array([np.nan]))
+            alternative_z_ref = np.nan
 
         # filter orientation to command to the robot (through equivalent Euler angles)
         euler_angles_cmd = self.alpha_r * euler_angles_cmd + (1-self.alpha_r)*self.last_rotation_ee_cmd
@@ -356,8 +368,13 @@ class TO_module:
         # publish also the alternative_z_ref
         message_z = Float32MultiArray()
         message_z.layout.data_offset = 0
-        message_z.data = alternative_z_ref
+        if torque_ref is None:
+            torque_se = np.nan
+        message_z.data = np.array([alternative_z_ref, torque_se])
         self.pub_z_level.publish(message_z)
+
+        # log the last commanded human pose
+        self.last_x_cmd = shoulder_pose_ref
         
 
     def publishInitialPoseAsCartRef(self, shoulder_pose_ref, position_gh_in_base, base_R_sh, dist_gh_elbow):
