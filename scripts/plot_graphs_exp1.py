@@ -6,6 +6,10 @@ The plots produced here are used in Fig.5 and Fig.6 of the paper.
 import os
 import pickle
 from spatialmath import SO3
+import numpy as np
+import rosbag
+from scipy.spatial.transform import Rotation as R
+import matplotlib.pyplot as plt
 
 num_params = 6
 def gaussian_2d(x, y, amplitude, x0, y0, sigma_x, sigma_y, offset):
@@ -60,15 +64,15 @@ def generate_approximated_strainmap(file_strainmaps, ar_value):
 def main():
     # define the required paths
     code_path = os.path.dirname(os.path.realpath(__file__))     # getting path to where this script resides
-    path_to_repo = os.path.join(code_path, '..', '..')          # getting path to the repository
+    path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
     path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags', 'experiment_1')
     # bag_file_name = '2024-03-26-12-42-34_Exp1_noHuman.bag'
     # bag_file_name = '2024-03-26-12-46-15_Exp1_withHuman.bag'
     # bag_file_name = 'experiment_1/exp1_good_try_withHuman.bag'
-    bag_file_name = '2024-05-07-18-31-15_exp1_good.bag'
+    bag_file_name = 'exp1_2.bag'
 
     # load the strainmap dictionary used in the experiment
-    file_strainmaps = '/home/itbellix/Desktop/GitHub/PTbot_official/Personal_Results/Strains/Passive/AllMuscles/params_strainmaps_num_Gauss_3/params_strainmaps_num_Gauss_3.pkl' 
+    file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps','Passive','differentiable_strainmaps_allTendons.pkl')
     
     # instantiate variables (they will be Mx4 matrices, where M is variable -number of data- and the last column is the timestamp)
     estimated_shoulder_state = None
@@ -89,45 +93,49 @@ def main():
 
         # extracting commanded ee cartesian poses
         print('Extracting commanded ee cartesian poses')
-        for _, msg, time_msg in bag.read_messages(topics=['/optimal_cartesian_ref_ee']):
+        for _, msg, time_msg in bag.read_messages(topics=['/CartesianImpedanceController/reference_cartesian_pose']):
             if xyz_cmd is None:
                 timestamps_cmd = time_msg.to_time()
-                data_msg = np.reshape(msg.data, (4,4))
-                xyz_cmd = np.hstack((data_msg[0:3, 3], timestamps_cmd))
-                angle, vector = SO3(data_msg[0:3, 0:3]).angvec(unit='deg')
+                position_reference = np.array([msg.pose.position.x,msg.pose.position.y, msg.pose.position.z])
+                quat_reference = np.array([msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w])
+                xyz_cmd = np.hstack((position_reference, timestamps_cmd))
+                angle, vector = SO3(R.from_quat(quat_reference, scalar_first=False).as_matrix()).angvec(unit='deg')
                 angvec_cmd = np.hstack((angle, vector, timestamps_cmd))
             else:
                 timestamps_cmd = time_msg.to_time()
-                data_msg = np.reshape(msg.data, (4,4))
-                xyz_cmd = np.vstack((xyz_cmd, np.hstack((data_msg[0:3, 3], timestamps_cmd))))
-                angle, vector = SO3(data_msg[0:3, 0:3]).angvec(unit='deg')
+                position_reference = np.array([msg.pose.position.x,msg.pose.position.y, msg.pose.position.z])
+                quat_reference = np.array([msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w])
+                xyz_cmd = np.vstack((xyz_cmd, np.hstack((position_reference, timestamps_cmd))))
+                angle, vector = SO3(R.from_quat(quat_reference, scalar_first=False).as_matrix()).angvec(unit='deg')
                 angvec_cmd = np.vstack((angvec_cmd, np.hstack((angle, vector, timestamps_cmd))))
 
         print('Extracting not adjusted ee Z cartesian value')
         for _, msg, time_msg in bag.read_messages(topics=['/uncompensated_z_ref']):
             if z_uncompensated is None:
                 timestamps_z = time_msg.to_time()
-                z_uncompensated = np.hstack((msg.data, timestamps_z))
+                z_uncompensated = np.hstack((msg.data[0], timestamps_z))
             else:
                 timestamps_z = time_msg.to_time()
-                z_uncompensated = np.vstack((z_uncompensated, np.hstack((msg.data, timestamps_z))))
+                z_uncompensated = np.vstack((z_uncompensated, np.hstack((msg.data[0], timestamps_z))))
 
         # extracting actual ee cartesian poses
         print('Extracting actual ee cartesian poses')
-        for _, msg, time_msg in bag.read_messages(topics=['/iiwa7/ee_cartesian_pose']):
+        for _, msg, time_msg in bag.read_messages(topics=['/CartesianImpedanceController/cartesian_pose']):
             time_curr = time_msg.to_time()
             if time_curr >= xyz_cmd[0, -1]:
                 if xyz_curr is None:
                     timestamps_curr = time_msg.to_time()
-                    data_msg = np.reshape(msg.pose, (4,4))
-                    xyz_curr = np.hstack((data_msg[0:3, 3], timestamps_curr))
-                    angle, vector = SO3(data_msg[0:3, 0:3]).angvec(unit='deg')
+                    position_curr = np.array([msg.pose.position.x,msg.pose.position.y, msg.pose.position.z])
+                    quat_curr = np.array([msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w])
+                    xyz_curr = np.hstack((position_curr, timestamps_curr))
+                    angle, vector = SO3(R.from_quat(quat_curr, scalar_first=False).as_matrix()).angvec(unit='deg')
                     angvec_curr = np.hstack((angle, vector, timestamps_curr))
                 else:
                     timestamps_curr = time_msg.to_time()
-                    data_msg = np.reshape(msg.pose, (4,4))
-                    xyz_curr = np.vstack((xyz_curr, np.hstack((data_msg[0:3, 3], timestamps_curr))))
-                    angle, vector = SO3(data_msg[0:3, 0:3]).angvec(unit='deg')
+                    position_curr = np.array([msg.pose.position.x,msg.pose.position.y, msg.pose.position.z])
+                    quat_curr = np.array([msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w])
+                    xyz_curr = np.vstack((xyz_curr, np.hstack((position_curr, timestamps_curr))))
+                    angle, vector = SO3(R.from_quat(quat_curr, scalar_first=False).as_matrix()).angvec(unit='deg')
                     angvec_curr = np.vstack((angvec_curr, np.hstack((angle, vector, timestamps_curr))))
 
         print('Extracting optimization outputs')
@@ -146,7 +154,33 @@ def main():
                 optimal_trajectory = np.vstack((optimal_trajectory, np.hstack((data[0:6,:], time_curr * np.ones((6,1))))))
                 optimal_controls = np.vstack((optimal_controls, np.hstack((data[6:8,:], time_curr * np.ones((2,1))))))
 
+        print('Extracting forces')
+        interaction_force_magnitude = None
+        for _, msg, time_msg in bag.read_messages(topics=['/ft_sensor_data']):
+            time_curr = time_msg.to_time()
+            if interaction_force_magnitude is None:
+                interaction_force_magnitude = np.hstack((np.linalg.norm(msg.data[0:3]), time_curr))
+            else:
+                interaction_force_magnitude = np.vstack((interaction_force_magnitude, np.hstack((np.linalg.norm(msg.data[0:3]), time_curr))))
+
+
+        print('Extracting muscle activation')
+        num_muscles = 22
+        index_sspa = 18
+        muscle_activation_max = None
+        muscle_activation_sspa = None
+        for _, msg, time_msg in bag.read_messages(topics=['/estimated_muscle_activation']):
+            time_curr = time_msg.to_time()
+            if muscle_activation_max is None:
+                muscle_activation_max = np.hstack((np.max(msg.data[0:num_muscles]), time_curr))
+                muscle_activation_sspa = np.hstack((msg.data[index_sspa], time_curr))
+            else:
+                muscle_activation_max = np.vstack((muscle_activation_max, np.hstack((np.max(msg.data[0:num_muscles]), time_curr))))
+                muscle_activation_sspa = np.vstack((muscle_activation_sspa, np.hstack((msg.data[index_sspa], time_curr))))
+
+
     num_optim = int(optimal_controls.shape[0]/2)
+
     # Now, let's filter the data to retain only the interesting part of the experiment
     # (i.e., when the subject is wearing the brace properly and the robot is moving)
     init_time = xyz_curr[int(xyz_curr.shape[0]/100*55), -1]         # identify initial timestep
@@ -160,6 +194,9 @@ def main():
     angvec_curr[:,-1] = angvec_curr[:,-1] - init_time
     angvec_cmd[:,-1] = angvec_cmd[:,-1] - init_time
     optimal_trajectory[:,-1] = optimal_trajectory[:,-1] - init_time
+    interaction_force_magnitude[:,-1] = interaction_force_magnitude[:,-1] - init_time
+    muscle_activation_max[:,-1] = muscle_activation_max[:,-1] - init_time
+    muscle_activation_sspa[:,-1] = muscle_activation_sspa[:,-1] - init_time
 
     estimated_shoulder_state = estimated_shoulder_state[(estimated_shoulder_state[:,-1]>0) & (estimated_shoulder_state[:,-1]<end_time)]
     xyz_curr = xyz_curr[(xyz_curr[:,-1]>0) & (xyz_curr[:,-1]<end_time)]    # retain data after initial time
@@ -168,6 +205,9 @@ def main():
         z_uncompensated = z_uncompensated[(z_uncompensated[:,-1]>0) & (z_uncompensated[:,-1]<end_time)]
     angvec_curr = angvec_curr[(angvec_curr[:,-1]>0) & (angvec_curr[:,-1]<end_time)]
     angvec_cmd = angvec_cmd[(angvec_cmd[:,-1]>0) & (angvec_cmd[:,-1]<end_time)]
+    interaction_force_magnitude = interaction_force_magnitude[(interaction_force_magnitude[:,-1]>0) & (interaction_force_magnitude[:,-1]<end_time)]
+    muscle_activation_max = muscle_activation_max[(muscle_activation_max[:,-1]>0) & (muscle_activation_max[:,-1]<end_time)]
+    muscle_activation_sspa = muscle_activation_sspa[(muscle_activation_sspa[:,-1]>0) & (muscle_activation_sspa[:,-1]<end_time)]
 
 
     strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4])
@@ -413,6 +453,24 @@ def main():
     ax.plot(np.rad2deg(optimal_se_ddot))
     ax.set_ylabel('[deg/(s^2)]')
     ax.set_title('SE acceleration')
+
+    # visualize magnitude of interaction force
+    if interaction_force_magnitude is not None:
+        fig = plt.figure()
+        ax = fig.add_subplot()
+        ax.plot(interaction_force_magnitude[:,-1], interaction_force_magnitude[:,0])
+        ax.set_ylabel('[N]')
+        ax.set_title('Interaction force')
+
+    if muscle_activation_sspa is not None:
+        fig = plt.figure()
+        ax = fig.add_subplot()
+        ax.plot(muscle_activation_sspa[:,-1], muscle_activation_sspa[:,0])
+        ax.set_ylabel('activation')
+        ax.set_title('Supraspinatus Anterior')
+
+        # print to screen the average maximum muscle activation
+        print('Average maximum activation: ', np.mean(muscle_activation_max[:, 0]))
 
     data = {}
     data['optimal_trajectory'] = optimal_trajectory
