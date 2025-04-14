@@ -181,7 +181,7 @@ if experiment == 2:
         if target_tendon[-3:]== 'sim':
             # used in simulation, to test effects of different activation ramps
             # here we perform only one motion
-            x_goal = x_0                
+            x_goal = x_0.reshape((1,6))            
             x_0 = x_goal_1
 
             speed_estimate = False
@@ -196,7 +196,7 @@ if experiment == 2:
         # goal states (if more than one, the next one is used once the previous is reached)
         x_goal_1 = np.deg2rad(np.array([60, 0, 60, 0, 0, 0]))
 
-        x_goal = x_goal_1
+        x_goal = x_goal_1.reshape((1,6))
 
         speed_estimate = False
 
@@ -220,7 +220,7 @@ if experiment == 3: # TUNING OF OCP COST FUNCTION WEIGHTS (Fig. 4 in the paper)
     # file from which to read the precomputed parameters that define the strainmaps
     file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Passive', 'differentiable_strainmaps_allTendons.pkl')
 
-    # set the cost weights
+    # set the cost weights (in this experiment, we change these to various values and see how they affect the optimization result)
     gamma_strain = 0        # weight for increase in strain
     gamma_goal = 1          # weight for distance to goal
     gamma_velocities = 0     # weight on the coordinates' velocities
@@ -234,7 +234,7 @@ if experiment == 3: # TUNING OF OCP COST FUNCTION WEIGHTS (Fig. 4 in the paper)
     # goal states (if more than one, the next one is used once the previous is reached)
     x_goal_1 = np.deg2rad(np.array([50, 0, 40, 0, 0, 0]))
 
-    x_goal = x_goal_1
+    x_goal = x_goal_1.reshape((1,6))
     
     # enforce constraints on the final state (in the paper, we keep both the flags to True to generate the results for this experiment)
     constrain_final_position = True
@@ -270,7 +270,7 @@ if experiment == 4: # Execution of A* planning in simulation
     x_0 = np.deg2rad(np.array([120, 0, 100, 0, 0, 0]))
 
     # goal states (if more than one, the next one is used once the previous is reached)
-    x_goal = np.deg2rad(np.array([50, 0, 40, 0, 0, 0]))
+    x_goal = np.deg2rad(np.array([50, 0, 40, 0, 0, 0])).reshape((1,6))
 
     perform_BATON = False
     perform_A_star = True
