@@ -197,7 +197,7 @@ if __name__ == '__main__':
 
         # instantiate the force/torque sensor object
         print("Connecting force-torque sensor...")
-        sensor = BotaSerialSensor(experimental_params['ft_sensor_port'], n_readings_calib=1000)
+        sensor = BotaSerialSensor(experimental_params['ft_sensor_port'], n_readings_calib=500)
 
         # instantiate trajectory optimization module, given the NLP problem, 
         # the shared ros topics (defined in experiment_parameters.py), and setting debugging options
@@ -310,6 +310,7 @@ if __name__ == '__main__':
 
         # countdown for the user to be ready
         print("Starting to provide optimal reference")
+        time.sleep(5)
         print("3")
         time.sleep(1)
         print("2")
@@ -394,6 +395,9 @@ if __name__ == '__main__':
                                 to_module.setActivationLevel(0.92)
                                 
                             count += 1
+
+                    if experiment==3:
+                        goal_index += 1
 
                 elif perform_A_star:
                     # optimize the trajectory towards the given goal
