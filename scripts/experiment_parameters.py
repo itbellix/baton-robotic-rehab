@@ -33,6 +33,8 @@ setup = 'newLab_facingRobot'        # list of setups: 'OldLab' (configuration th
 translational_stiffness_cart = 900
 rotational_stiffness_cart = 15
 
+index_muscle = None
+
 # physical parameters related to the experimental setup (they could be different every time)
 #   * l_arm:  (subject-dependent) length of the segment between the glenohumeral joint center 
 #             and the elbow tip, when the elbow of the subject is bent at 90 degrees 
@@ -131,7 +133,7 @@ if experiment == 2:
     N = 10      # control intervals used (control will be constant during each interval)
     T = 1.      # time horizon for the optimization
 
-    target_tendon = "SSPA_sim" # available :  "SSPA"      (supraspinatus anterior - used in the paper for real robot experiment)
+    target_tendon = "ISI" # available :  "SSPA"      (supraspinatus anterior - used in the paper for real robot experiment)
                                #              "SSPA_sim"  (supraspinatus anterior - used in the paper for simulated experiment with different activation ramps)
                                #              "custom_1"
                                #              "ISI" (infraspinatus inferior) 
@@ -139,8 +141,10 @@ if experiment == 2:
     # file from which to read the precomputed parameters that define the strainmaps
     if target_tendon == "ISI":
         file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Active', 'differentiable_strainmaps_ISI.pkl')
+        index_muscle = 11   # from the OpenSim model
     elif target_tendon[0:4] == "SSPA":
         file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Active', 'differentiable_strainmaps_SSPA.pkl')
+        index_muscle = 18   # from the OpenSim model
     elif target_tendon == "custom_1":
         file_strainmaps = None
 
@@ -149,14 +153,14 @@ if experiment == 2:
         gamma_strain = 2        # weight for increase in strain
         gamma_goal = 1          # weight for distance to goal (real robot)
         # gamma_goal = 2          # weight for distance to goal (simulation)
-        gamma_velocities = 0        # weight for use of generalized torques
+        gamma_velocities = 0        # weight for human velocities
         gamma_acceleration = 0.3  # weight on the coordinates' acceleration (real robot)
         # gamma_acceleration = 0.3  # weight on the coordinates' acceleration (simulation)
 
     if target_tendon == "ISI":
         gamma_strain = 1        # weight for increase in strain
-        gamma_goal = 2          # weight for distance to goal
-        gamma_velocities = 0        # weight for use of generalized torques
+        gamma_goal = 1.5          # weight for distance to goal
+        gamma_velocities = 0        # weight for human velocities
         gamma_acceleration = 0.3  # weight on the coordinates' acceleration
 
     if target_tendon == "ISI":
@@ -359,6 +363,7 @@ experimental_params['sensor_R_ee'] = sensor_R_ee
 experimental_params['elbow_R_sensor'] = elbow_R_sensor
 experimental_params['ar_offset'] = ar_offset
 experimental_params['ulna_R_sensor'] = ulna_R_sensor
+experimental_params['index_muscle'] = index_muscle
 # -------------------------------------------------------------------------------
 # names of the ROS topics on which the shared communication between biomechanical-based optimization and robot control will happen
 shared_ros_topics = {}

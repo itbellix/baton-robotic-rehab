@@ -67,6 +67,7 @@ class TO_module:
                                                     # that will be transformed in robot coordinates and tracked by the robot.
         self.u_opt = None                           # Optimal sequence of generalized torques to be applied to the model to track
                                                     # the desired x_opt
+        self.upsampling_nlp_output = 5              # we will upsample x_opt and u_opt to get more reference points
 
         self.nlps_module = nlps                     # module for treating the NLP problem
         self.nlp_count = 0                          # keeps track of the amount of times the NLP is solved
@@ -551,6 +552,20 @@ class TO_module:
         print("Receiving current shoulder pose.")
 
     
+    def upsample_array(self, arr, upsample_ratio):
+        # arr: shape (n_rows, n_cols)
+        n_rows, n_cols = arr.shape
+        x_original = np.linspace(0, 1, n_cols)
+        x_upsampled = np.linspace(0, 1, n_cols * upsample_ratio)
+
+        upsampled = np.zeros((n_rows, len(x_upsampled)))
+
+        for i in range(n_rows):
+            upsampled[i] = np.interp(x_upsampled, x_original, arr[i])
+
+        return upsampled
+
+    
     def optimize_trajectory(self, x_goal, delay):
         """
         This function computes the optimal trajectory towards the goal position, given the current shoulder state
@@ -618,13 +633,17 @@ class TO_module:
 
             # save the strain value
             self.strain_opt = strain_opt
+
+            # let's upsample the solution
+            x_opt_upsampled = self.upsample_array(x_opt, self.upsampling_nlp_output)
+            u_opt_upsampled = self.upsample_array(u_opt, self.upsampling_nlp_output)
             
             # update the optimal values that are stored in the TO module. 
             # They can be accessed only if there is no other process that is modifying them
             with self.x_opt_lock:
                 # self.x_opt = x_opt[:, 1::]      # the first point is discarded, as it is the current one
-                self.x_opt = x_opt[:, 2::]      # the first points are discarded, to compensate for relatively low stiffness of the controller
-                self.u_opt = u_opt[:,1::]       # same as above, to guarantee consistency
+                self.x_opt = x_opt_upsampled[:, 2*self.upsampling_nlp_output::]      # the first points are discarded, to compensate for relatively low stiffness of the controller
+                self.u_opt = u_opt_upsampled[:, 1*self.upsampling_nlp_output::]       # same as above, to guarantee consistency
 
             # update average running time
             self.avg_nlp_time = ((self.avg_nlp_time * self.nlp_count) + time_execution) / (self.nlp_count+1)
@@ -639,8 +658,6 @@ class TO_module:
             activation = self.activation_level*self.delta_activation + self.min_activation
             message.data = np.hstack((np.vstack((x_opt, u_opt, strain_opt)).flatten(), activation))    # stack the three outputs in a single message (plus activation), and flatten it for publishing
             self.pub_optimization_output.publish(message)
-
-            return u_opt, x_opt, j_opt, strain_opt, xddot_opt
         
 
     def optimize_trajectory_astar(self, maze, x_goal, strainmap_list):
@@ -709,14 +726,13 @@ class TO_module:
             self.pub_optimization_output.publish(message)
 
 
-
     def publish_continuous_trajectory(self, p_gh_in_base, rot_ee_in_base_0, dist_shoulder_ee):
         """
         This function picks the most recent information regarding the optimal shoulder trajectory,
         converts it to end effector space and publishes the robot reference continuously. A flag enables/disables
         the computations/publishing to be performed, such that this happens only if the robot controller needs it.
         """
-        rate = rospy.Rate(1/self.nlps_module.h)  # Set the publishing rate (depending on the parameters of the NLP)
+        rate = rospy.Rate(1/self.nlps_module.h/self.upsampling_nlp_output)  # Set the publishing rate (depending on the parameters of the NLP)
 
         while not rospy.is_shutdown():
             if self.flag_pub_trajectory:    # perform the computations only if needed
@@ -789,7 +805,7 @@ class TO_module:
                                                                     acceleration = acceleration_sh, 
                                                                     values_prescribed_forces = interaction_wrench)
 
-                self.setActivationLevel(current_activation[18])         # set the activation level of the supraspinatus anterior (SSPA)
+                self.setActivationLevel(current_activation[experimental_params['index_muscle']])         # set the activation level of the supraspinatus anterior (SSPA)
 
                 # publish the activation level (for debugging and logging)
                 message = Float32MultiArray()
