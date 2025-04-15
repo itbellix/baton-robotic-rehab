@@ -81,7 +81,7 @@ def main():
         print('Extracting optimization outputs')
         optimal_trajectory = None
         for _, msg, time_msg in bag.read_messages(topics=['/optimization_output']):
-            data = np.array(msg.data).reshape((6,50))
+            data = np.array(msg.data).reshape((6, n_interp))
             time_curr = time_msg.to_time()
             if optimal_trajectory is None:
                 optimal_trajectory = np.hstack((data, time_curr * np.ones((6,1))))
