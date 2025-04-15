@@ -437,7 +437,7 @@ class RobotControlModule:
         This allows to perform all the start up procedures, and the optimal trajectory for the robot EE will be published
         only when the subject/experimenter are ready to start.
         """
-        rate = rospy.Rate(10)        # setting the rate quite low so that the publishing happens not too often
+        rate = rospy.Rate(50)        # setting the rate quite low so that the publishing happens not too often
         while not rospy.is_shutdown():
             self.pub_request_reference.publish(self.requesting_reference)
             rate.sleep()
@@ -564,6 +564,11 @@ if __name__ == "__main__":
                         # wait for the robot to reach the desired pose
                         control_module.joint_action_client.wait_for_result()
 
+                        # make sure that a resonable stiffness is set on the controller
+                        control_module.reconf_client_cart.update_configuration({'separate_axis':False, 
+                                                                                'translational_stiffness':250, 
+                                                                                'rotational_stiffness':5})
+
                         if control_module.desired_pose_reached:
                             rospy.sleep(0.1)    # wait a bit to make sure that the robot is stable
 
@@ -578,27 +583,44 @@ if __name__ == "__main__":
                                 control_module.active_controller = 'CIC'
 
                             # add nullspace control on robot's elbow
-                            control_module.reconf_client_cart.update_configuration({'nullspace_control': True, 
-                                                                                    'q_nullspace_joint_1':0, 
-                                                                                    'nullspace_stiffness_joint_1':0,
-                                                                                    'q_nullspace_joint_2':0, 
-                                                                                    'nullspace_stiffness_joint_2':0.3,
-                                                                                    'q_nullspace_joint_3':np.pi/4, 
-                                                                                    'nullspace_stiffness_joint_3':0.3,
-                                                                                    'q_nullspace_joint_4':0, 
-                                                                                    'nullspace_stiffness_joint_4':0,    # joint 4 affects EE precision
-                                                                                    'q_nullspace_joint_5':1.5, 
-                                                                                    'nullspace_stiffness_joint_5':1,
-                                                                                    'q_nullspace_joint_6':0, 
-                                                                                    'nullspace_stiffness_joint_6':0,
-                                                                                    'q_nullspace_joint_7':0, 
-                                                                                    'nullspace_stiffness_joint_7':0})
-                            
-                            if experiment == 1:
-                                # with the old controller I would add a nullspace joint controller also on the last links (to keep them close to 0)
-                                # this is not implemented yet in the new controller
-                                # TODO: test if we can maybe work around this by using only nullspace joint controller also above!
-                                pass
+                            if experiment == 1 or experiment == 2:
+                                control_module.reconf_client_cart.update_configuration({'nullspace_control': True, 
+                                                                                        'q_nullspace_joint_1':0, 
+                                                                                        'nullspace_stiffness_joint_1':0,
+                                                                                        'q_nullspace_joint_2':0, 
+                                                                                        'nullspace_stiffness_joint_2':0.3,
+                                                                                        'q_nullspace_joint_3':np.pi/4, 
+                                                                                        'nullspace_stiffness_joint_3':0.3,
+                                                                                        'q_nullspace_joint_4':0, 
+                                                                                        'nullspace_stiffness_joint_4':0,    # joint 4 affects EE precision
+                                                                                        'q_nullspace_joint_5':1.5, 
+                                                                                        'nullspace_stiffness_joint_5':1,
+                                                                                        'q_nullspace_joint_6':0, 
+                                                                                        'nullspace_stiffness_joint_6':0,
+                                                                                        'q_nullspace_joint_7':0, 
+                                                                                        'nullspace_stiffness_joint_7':0})
+                            elif experiment == 5:
+                                    control_module.reconf_client_cart.update_configuration({'nullspace_control': True, 
+                                                                                        'q_nullspace_joint_1':0, 
+                                                                                        'nullspace_stiffness_joint_1':3,
+                                                                                        'q_nullspace_joint_2':0, 
+                                                                                        'nullspace_stiffness_joint_2':3,
+                                                                                        'q_nullspace_joint_3':0, 
+                                                                                        'nullspace_stiffness_joint_3':8,
+                                                                                        'q_nullspace_joint_4':0, 
+                                                                                        'nullspace_stiffness_joint_4':1,    # joint 4 affects EE precision
+                                                                                        'q_nullspace_joint_5':0, 
+                                                                                        'nullspace_stiffness_joint_5':0.5,
+                                                                                        'q_nullspace_joint_6':0, 
+                                                                                        'nullspace_stiffness_joint_6':0.5,
+                                                                                        'q_nullspace_joint_7':0, 
+                                                                                        'nullspace_stiffness_joint_7':0})
+                                    
+                                    # control_module.reconf_client_cart.update_configuration({'cart_nullspace_control': True, 
+                                    #                                         'elbow_ref_z':0.9, 
+                                    #                                         'nullspace_stiffness_elbow_x':20,
+                                    #                                         'nullspace_stiffness_elbow_y':20,
+                                    #                                         'nullspace_stiffness_elbow_z':90})
 
                             # set the flag for indicating completion, and inform the user
                             control_module.initial_pose_reached = True
@@ -727,6 +749,9 @@ if __name__ == "__main__":
 
                 # 'q': quit the execution, and freeze the robot to the current pose
                 if pressed_key.get() == "q":
+                    rospy.loginfo("shutting down - freezing to current position")
+                    control_module.requesting_reference = False
+                    
                     if control_module.active_controller == 'CIC':
                         rospy.loginfo("switching controller to JIC")
                         response = control_module.controller_manager(start_controllers=['/JointImpedanceController'],
@@ -737,9 +762,6 @@ if __name__ == "__main__":
                             rospy.logerr("Failed to switch to joint controller")
                         else:
                             control_module.active_controller = 'JIC'
-
-                    rospy.loginfo("shutting down - freezing to current position")
-                    control_module.requesting_reference = False
 
                     # adjust flag for termination
                     ongoing_therapy = False
