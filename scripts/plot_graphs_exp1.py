@@ -169,15 +169,15 @@ def main():
         num_muscles = 22
         index_sspa = 18
         muscle_activation_max = None
-        muscle_activation_sspa = None
+        muscle_activation_selected = None
         for _, msg, time_msg in bag.read_messages(topics=['/estimated_muscle_activation']):
             time_curr = time_msg.to_time()
             if muscle_activation_max is None:
                 muscle_activation_max = np.hstack((np.max(msg.data[0:num_muscles]), time_curr))
-                muscle_activation_sspa = np.hstack((msg.data[index_sspa], time_curr))
+                muscle_activation_selected = np.hstack((msg.data[index_sspa], time_curr))
             else:
                 muscle_activation_max = np.vstack((muscle_activation_max, np.hstack((np.max(msg.data[0:num_muscles]), time_curr))))
-                muscle_activation_sspa = np.vstack((muscle_activation_sspa, np.hstack((msg.data[index_sspa], time_curr))))
+                muscle_activation_selected = np.vstack((muscle_activation_selected, np.hstack((msg.data[index_sspa], time_curr))))
 
 
     num_optim = int(optimal_controls.shape[0]/2)
@@ -195,9 +195,11 @@ def main():
     angvec_curr[:,-1] = angvec_curr[:,-1] - init_time
     angvec_cmd[:,-1] = angvec_cmd[:,-1] - init_time
     optimal_trajectory[:,-1] = optimal_trajectory[:,-1] - init_time
-    interaction_force_magnitude[:,-1] = interaction_force_magnitude[:,-1] - init_time
-    muscle_activation_max[:,-1] = muscle_activation_max[:,-1] - init_time
-    muscle_activation_sspa[:,-1] = muscle_activation_sspa[:,-1] - init_time
+    if interaction_force_magnitude is not None:
+        interaction_force_magnitude[:,-1] = interaction_force_magnitude[:,-1] - init_time
+    if muscle_activation_max is not None:
+        muscle_activation_max[:,-1] = muscle_activation_max[:,-1] - init_time
+        muscle_activation_selected[:,-1] = muscle_activation_selected[:,-1] - init_time
 
     estimated_shoulder_state = estimated_shoulder_state[(estimated_shoulder_state[:,-1]>0) & (estimated_shoulder_state[:,-1]<end_time)]
     xyz_curr = xyz_curr[(xyz_curr[:,-1]>0) & (xyz_curr[:,-1]<end_time)]    # retain data after initial time
@@ -206,9 +208,11 @@ def main():
         z_uncompensated = z_uncompensated[(z_uncompensated[:,-1]>0) & (z_uncompensated[:,-1]<end_time)]
     angvec_curr = angvec_curr[(angvec_curr[:,-1]>0) & (angvec_curr[:,-1]<end_time)]
     angvec_cmd = angvec_cmd[(angvec_cmd[:,-1]>0) & (angvec_cmd[:,-1]<end_time)]
-    interaction_force_magnitude = interaction_force_magnitude[(interaction_force_magnitude[:,-1]>0) & (interaction_force_magnitude[:,-1]<end_time)]
-    muscle_activation_max = muscle_activation_max[(muscle_activation_max[:,-1]>0) & (muscle_activation_max[:,-1]<end_time)]
-    muscle_activation_sspa = muscle_activation_sspa[(muscle_activation_sspa[:,-1]>0) & (muscle_activation_sspa[:,-1]<end_time)]
+    if interaction_force_magnitude is not None:
+        interaction_force_magnitude = interaction_force_magnitude[(interaction_force_magnitude[:,-1]>0) & (interaction_force_magnitude[:,-1]<end_time)]
+    if muscle_activation_max is not None:
+        muscle_activation_max = muscle_activation_max[(muscle_activation_max[:,-1]>0) & (muscle_activation_max[:,-1]<end_time)]
+        muscle_activation_selected = muscle_activation_selected[(muscle_activation_selected[:,-1]>0) & (muscle_activation_selected[:,-1]<end_time)]
 
 
     strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4])
@@ -472,10 +476,10 @@ def main():
         ax.set_ylabel('[N]')
         ax.set_title('Interaction force')
 
-    if muscle_activation_sspa is not None:
+    if muscle_activation_selected is not None:
         fig = plt.figure()
         ax = fig.add_subplot()
-        ax.plot(muscle_activation_sspa[:,-1], muscle_activation_sspa[:,0])
+        ax.plot(muscle_activation_selected[:,-1], muscle_activation_selected[:,0])
         ax.set_ylabel('activation')
         ax.set_title('Supraspinatus Anterior')
 
