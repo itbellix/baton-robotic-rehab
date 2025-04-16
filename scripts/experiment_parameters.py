@@ -133,28 +133,27 @@ if experiment == 2:
     N = 10      # control intervals used (control will be constant during each interval)
     T = 1.      # time horizon for the optimization
 
-    target_tendon = "ISI" # available :  "SSPA"      (supraspinatus anterior - used in the paper for real robot experiment)
-                               #              "SSPA_sim"  (supraspinatus anterior - used in the paper for simulated experiment with different activation ramps)
-                               #              "custom_1"
-                               #              "ISI" (infraspinatus inferior) 
+    target_tendon = "SSPA"  # available :  "SSPA" (supraspinatus anterior)
+                            #              "ISI" (infraspinatus inferior)
+                            #              "custom_1"
 
     # file from which to read the precomputed parameters that define the strainmaps
     if target_tendon == "ISI":
         file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Active', 'differentiable_strainmaps_ISI.pkl')
         index_muscle = 11   # from the OpenSim model
-    elif target_tendon[0:4] == "SSPA":
+    elif target_tendon == "SSPA":
         file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Active', 'differentiable_strainmaps_SSPA.pkl')
-        index_muscle = 18   # from the OpenSim model
+        index_muscle = 11   # from the OpenSim model, 11 for ISI and 18 for SSPA
     elif target_tendon == "custom_1":
         file_strainmaps = None
 
     # set the cost weights
-    if target_tendon[0:4] == "SSPA" or target_tendon == "custom_1":
+    if target_tendon == "SSPA" or target_tendon == "custom_1":
         gamma_strain = 2        # weight for increase in strain
-        gamma_goal = 1          # weight for distance to goal (real robot)
+        gamma_goal = 0.8          # weight for distance to goal (real robot)
         # gamma_goal = 2          # weight for distance to goal (simulation)
         gamma_velocities = 0        # weight for human velocities
-        gamma_acceleration = 0.3  # weight on the coordinates' acceleration (real robot)
+        gamma_acceleration = 0.4  # weight on the coordinates' acceleration (real robot)
         # gamma_acceleration = 0.3  # weight on the coordinates' acceleration (simulation)
 
     if target_tendon == "ISI":
@@ -176,23 +175,13 @@ if experiment == 2:
 
         speed_estimate = True
 
-    if target_tendon[0:4] == "SSPA":
-        x_0 = np.deg2rad(np.array([45, 0, 95, 0, 0, 0]))
+    if target_tendon == "SSPA":
+        x_0 = np.deg2rad(np.array([60, 0, 60, 0, 0, 0])) 
 
         # goal states (if more than one, the next one is used once the previous is reached)
-        x_goal_1 = np.deg2rad(np.array([60, 0, 60, 0, 0, 0]))
+        x_goal = np.deg2rad(np.array([45, 0, 95, 0, 0, 0])).reshape((1,6))
 
-        if target_tendon[-3:]== 'sim':
-            # used in simulation, to test effects of different activation ramps
-            # here we perform only one motion
-            x_goal = x_0.reshape((1,6))            
-            x_0 = x_goal_1
-
-            speed_estimate = False
-
-        else:
-            x_goal = np.vstack((x_goal_1, x_0, x_goal_1, x_0))  # used on the real robot
-            speed_estimate = True
+        speed_estimate = True
 
     if target_tendon == "custom_1":
         x_0 = np.deg2rad(np.array([45, 0, 95, 0, 0, 0]))
