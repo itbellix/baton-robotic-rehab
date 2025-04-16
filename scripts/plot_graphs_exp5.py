@@ -70,7 +70,7 @@ def main():
     # bag_file_name = '2024-03-26-12-42-34_Exp1_noHuman.bag'
     # bag_file_name = '2024-03-26-12-46-15_Exp1_withHuman.bag'
     # bag_file_name = 'experiment_1/exp1_good_try_withHuman.bag'
-    bag_file_name = 'exp5_bad.bag'
+    bag_file_name = 'exp5_1.bag'
 
     # load the strainmap dictionary used in the experiment
     file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps','Passive','differentiable_strainmaps_allTendons.pkl')
@@ -141,7 +141,7 @@ def main():
 
         print('Extracting optimization outputs')
         # assume that A* output is resampled to produce 50 points per trajectory
-        n_interp = 50
+        n_interp = 250
         optimal_trajectory = None
         for _, msg, time_msg in bag.read_messages(topics=['/optimization_output']):
             data = np.array(msg.data).reshape((6, n_interp))

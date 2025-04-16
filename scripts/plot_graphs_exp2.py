@@ -84,7 +84,7 @@ def main():
     path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
     path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags', 'experiment_2')
     # bag_file_name = '2024-05-07-19-05-30_exp2.bag'      # for experiment without activation
-    bag_file_name = 'exp2_passive_ISI.bag'    # for experiment with activation
+    bag_file_name = 'exp2_active_4.bag'    # for experiment with activation
 
     # load the strainmap dictionary used in the experiment
     # file_strainmaps = '/home/itbellix/Desktop/GitHub/PTbot_official/Personal_Results/Strains/Passive/AllMuscles/params_strainmaps_num_Gauss_3/params_strainmaps_num_Gauss_3.pkl' 
@@ -168,13 +168,13 @@ def main():
                 optimal_trajectory = np.vstack((optimal_trajectory, np.hstack((data[0:6,:], time_curr * np.ones((6,1))))))
 
         print('Extracting forces')
-        interaction_force_magnitude = None
-        for _, msg, time_msg in bag.read_messages(topics=['/ft_sensor_data']):
+        interaction_torque_x = None
+        for _, msg, time_msg in bag.read_messages(topics=['/compensated_wrench']):
             time_curr = time_msg.to_time()
-            if interaction_force_magnitude is None:
-                interaction_force_magnitude = np.hstack((np.linalg.norm(msg.data[0:3]), time_curr))
+            if interaction_torque_x is None:
+                interaction_torque_x = np.hstack((msg.data[3], time_curr))
             else:
-                interaction_force_magnitude = np.vstack((interaction_force_magnitude, np.hstack((np.linalg.norm(msg.data[0:3]), time_curr))))
+                interaction_torque_x = np.vstack((interaction_torque_x, np.hstack((msg.data[3], time_curr))))
 
         print('Extracting muscle activation')
         num_muscles = 22
@@ -207,8 +207,8 @@ def main():
     angvec_curr[:,-1] = angvec_curr[:,-1] - init_time
     angvec_cmd[:,-1] = angvec_cmd[:,-1] - init_time
     optimal_trajectory[:,:,-1] = optimal_trajectory[:,:,-1] - init_time
-    if interaction_force_magnitude is not None:
-        interaction_force_magnitude[:,-1] = interaction_force_magnitude[:,-1] - init_time
+    if interaction_torque_x is not None:
+        interaction_torque_x[:,-1] = interaction_torque_x[:,-1] - init_time
     if muscle_activation_max is not None:
         muscle_activation_max[:,-1] = muscle_activation_max[:,-1] - init_time
         muscle_activation_selected[:,-1] = muscle_activation_selected[:,-1] - init_time
@@ -220,6 +220,13 @@ def main():
         z_uncompensated = z_uncompensated[(z_uncompensated[:,-1]>0) & (z_uncompensated[:,-1]<end_time)]
     angvec_curr = angvec_curr[(angvec_curr[:,-1]>0) & (angvec_curr[:,-1]<end_time)]
     angvec_cmd = angvec_cmd[(angvec_cmd[:,-1]>0) & (angvec_cmd[:,-1]<end_time)]
+
+    if muscle_activation_max is not None:
+        muscle_activation_max = muscle_activation_max[(muscle_activation_max[:,-1]>0) & (muscle_activation_max[:,-1]<end_time)]
+        muscle_activation_selected = muscle_activation_selected[(muscle_activation_selected[:,-1]>0) & (muscle_activation_selected[:,-1]<end_time)]
+
+    if interaction_torque_x is not None:
+        interaction_torque_x = interaction_torque_x[(interaction_torque_x[:,-1]>0) & (interaction_torque_x[:,-1]<end_time)]
 
     filtered_trajectories = []                      # also filter the optimal trajectories
     for i in range(optimal_trajectory.shape[0]):
@@ -270,7 +277,7 @@ def main():
     ax.set_xlabel("Plane of elevation [deg]")
     ax.set_ylabel("Shoulder elevation [deg]")
     ax.legend()
-    ax.set_title("EXP1: Trajectory on strainmap (with human)")
+    ax.set_title("EXP2: Trajectory on strainmap (with human)")
 
     # visualize individual human DoF
     fig = plt.figure()
@@ -355,21 +362,21 @@ def main():
     fig.suptitle("EXP2: EE orientation")
 
     # visualize magnitude of interaction force
-    if interaction_force_magnitude is not None:
-        fs = 1/(interaction_force_magnitude[1,-1] - interaction_force_magnitude[0, -1])
-        cutoff = 30
+    if interaction_torque_x is not None:
+        fs = 1/(interaction_torque_x[11,-1] - interaction_torque_x[10, -1])
+        cutoff = 1
         order = 2
         nyquist = 0.5 * fs
         normal_cutoff = cutoff / nyquist
         b, a = butter(order, normal_cutoff, btype='low', analog=False)
-        interaction_force_magnitude_filt = filtfilt(b, a, interaction_force_magnitude[:,0])
+        interaction_torque_x_filt = filtfilt(b, a, interaction_torque_x[:,0])
 
         fig = plt.figure()
         ax = fig.add_subplot()
-        ax.plot(interaction_force_magnitude[:,-1], interaction_force_magnitude[:,0])
-        ax.plot(interaction_force_magnitude[:,-1], interaction_force_magnitude_filt)
+        ax.plot(interaction_torque_x[:,-1], interaction_torque_x[:,0])
+        ax.plot(interaction_torque_x[:,-1], interaction_torque_x_filt)
         ax.set_ylabel('[N]')
-        ax.set_title('Interaction force')
+        ax.set_title('Interaction torque (x)')
 
     if muscle_activation_selected is not None:
         fig = plt.figure()
