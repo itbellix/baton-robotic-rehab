@@ -702,13 +702,13 @@ class TO_module:
 
             f_interp = interp1d(arc_length, path, kind='linear', axis=1)    # interpolate based on arc length
 
-            arc_length_new = np.linspace(0, arc_length[-1], self.astar_planner.N_interp)
+            arc_length_new = np.linspace(0, arc_length[-1], self.astar_planner.N_interp*self.upsampling_nlp_output)
 
             path_upsampled = f_interp(arc_length_new)       # get upsampled path
 
-            ar_upsampled = np.ones(self.astar_planner.N_interp)*self.state_values_current[4]    # axial rotation is constant
+            ar_upsampled = np.ones(self.astar_planner.N_interp*self.upsampling_nlp_output)*self.state_values_current[4]    # axial rotation is constant
             
-            planned_states = np.zeros((self.nlps_module.dim_x, self.astar_planner.N_interp))    # A* cannot return velocities!
+            planned_states = np.zeros((self.nlps_module.dim_x, self.astar_planner.N_interp*self.upsampling_nlp_output))    # A* cannot return velocities!
             planned_states[0,:] = path_upsampled[0,:]
             planned_states[2,:] = path_upsampled[1,:]
             planned_states[4,:] = ar_upsampled              # ar is constant
@@ -720,7 +720,7 @@ class TO_module:
                 self.x_opt = planned_states
                 self.u_opt = planned_controls
 
-            # publish the trajectory for logging and debugging
+            # publish the trajectory for logging and debugging 
             message = Float32MultiArray()
             message.data = planned_states.flatten()
             self.pub_optimization_output.publish(message)
@@ -732,7 +732,7 @@ class TO_module:
         converts it to end effector space and publishes the robot reference continuously. A flag enables/disables
         the computations/publishing to be performed, such that this happens only if the robot controller needs it.
         """
-        rate = rospy.Rate(1/self.nlps_module.h/self.upsampling_nlp_output)  # Set the publishing rate (depending on the parameters of the NLP)
+        rate = rospy.Rate(1/self.nlps_module.h*self.upsampling_nlp_output)  # Set the publishing rate (depending on the parameters of the NLP)
 
         while not rospy.is_shutdown():
             if self.flag_pub_trajectory:    # perform the computations only if needed
