@@ -600,27 +600,22 @@ if __name__ == "__main__":
                                                                                         'q_nullspace_joint_7':0, 
                                                                                         'nullspace_stiffness_joint_7':0})
                             elif experiment == 5:
+                                    # we need higher nullspace gains
                                     control_module.reconf_client_cart.update_configuration({'nullspace_control': True, 
                                                                                         'q_nullspace_joint_1':0, 
-                                                                                        'nullspace_stiffness_joint_1':3,
+                                                                                        'nullspace_stiffness_joint_1':20,
                                                                                         'q_nullspace_joint_2':0, 
-                                                                                        'nullspace_stiffness_joint_2':3,
+                                                                                        'nullspace_stiffness_joint_2':20,
                                                                                         'q_nullspace_joint_3':0, 
-                                                                                        'nullspace_stiffness_joint_3':8,
+                                                                                        'nullspace_stiffness_joint_3':20,
                                                                                         'q_nullspace_joint_4':0, 
-                                                                                        'nullspace_stiffness_joint_4':1,    # joint 4 affects EE precision
+                                                                                        'nullspace_stiffness_joint_4':5,
                                                                                         'q_nullspace_joint_5':0, 
                                                                                         'nullspace_stiffness_joint_5':0.5,
                                                                                         'q_nullspace_joint_6':0, 
                                                                                         'nullspace_stiffness_joint_6':0.5,
                                                                                         'q_nullspace_joint_7':0, 
                                                                                         'nullspace_stiffness_joint_7':0})
-                                    
-                                    # control_module.reconf_client_cart.update_configuration({'cart_nullspace_control': True, 
-                                    #                                         'elbow_ref_z':0.9, 
-                                    #                                         'nullspace_stiffness_elbow_x':20,
-                                    #                                         'nullspace_stiffness_elbow_y':20,
-                                    #                                         'nullspace_stiffness_elbow_z':90})
 
                             # set the flag for indicating completion, and inform the user
                             control_module.initial_pose_reached = True
