@@ -805,7 +805,7 @@ class TO_module:
                                                                     acceleration = acceleration_sh, 
                                                                     values_prescribed_forces = interaction_wrench)
 
-                self.setActivationLevel(current_activation[experimental_params['index_muscle']])         # set the activation level of the supraspinatus anterior (SSPA)
+                self.setActivationLevel(current_activation[experimental_params['index_muscle']])         # set the activation level of the muscle we are treating
 
                 # publish the activation level (for debugging and logging)
                 message = Float32MultiArray()

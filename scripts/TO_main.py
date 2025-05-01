@@ -353,20 +353,9 @@ if __name__ == '__main__':
                     if experiment == 2:
 
                         if target_tendon == "SSPA":
-
-                            if goal_index==2:
-                                if current_activation+delta_act>0.25 or current_activation+delta_act<0.00:
-                                    delta_act = - delta_act
-                                current_activation += delta_act
-                                to_module.setActivationLevel(current_activation)
-
-                            if goal_index>2:
-                                # to_module.setActivationLevel(0.99)        # this is for having the real robot work fine 
-                                to_module.setActivationLevel(0.25)           # this is for having the simulation work on the real strainmap
-                            
                             if to_module.reachedPose(current_goal, tolerance = 0.05):
                                 goal_index += 1
-                                # time.sleep(3)
+                                time.sleep(3)
 
                         if target_tendon == "SSPA_sim":
                             count = count + 1

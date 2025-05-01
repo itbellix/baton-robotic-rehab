@@ -11,7 +11,7 @@ from scipy.spatial.transform import Rotation as R
 
 #-------------------------------------------------------------------------
 # choose which experiment to perform
-experiment = 1      # 1: Passive human subject (strain map is only position-dependent)
+experiment = 2      # 1: Passive human subject (strain map is only position-dependent)
                     # 2: Active human subject (strain maps change with muscle activation)
                     # 3: tuning of the cost function weights, in simulation, for experiment #1
                     # 4: execution of A* planning in the same conditions as experiment 3
@@ -162,7 +162,6 @@ if experiment == 2:
         gamma_velocities = 0        # weight for human velocities
         gamma_acceleration = 0.3  # weight on the coordinates' acceleration
 
-    if target_tendon == "ISI":
         # initial state (referred explicitly to the position of the patient's GH joint) 
         # Therapy will start in this position - used to build the NLP structure, and to command first position of the robot
         # x = [pe, pe_dot, se, se_dot, ar, ar_dot], but note that ar and ar_dot are not tracked
@@ -178,8 +177,10 @@ if experiment == 2:
     if target_tendon == "SSPA":
         x_0 = np.deg2rad(np.array([60, 0, 60, 0, 0, 0])) 
 
+        x_goal_1 = np.deg2rad(np.array([45, 0, 95, 0, 0, 0]))
+
         # goal states (if more than one, the next one is used once the previous is reached)
-        x_goal = np.deg2rad(np.array([45, 0, 95, 0, 0, 0])).reshape((1,6))
+        x_goal = np.vstack((x_goal_1, x_0, x_goal_1, x_0))
 
         speed_estimate = True
 
@@ -204,6 +205,10 @@ if experiment == 2:
 
     perform_BATON = True
     perform_A_star = False
+
+    # increase the rotational stiffness, since subject is asked
+    # to externally rotate to engage their muscles
+    rotational_stiffness_cart = 25
 
 if experiment == 3: # TUNING OF OCP COST FUNCTION WEIGHTS (Fig. 4 in the paper)
     # determine the time horizon and control intervals for the NLP problem, on the basis of the experiment
