@@ -153,7 +153,7 @@ class RobotControlModule:
         else:           # assume sampling frequency of 200 Hz
             self.fs = 200
             self.alpha_p = 0.15
-            self.ma_window = 10                         # a moving average filter with window of 10 samples is used for vel and acc data
+            self.ma_window = 5                          # a moving average filter with window of 10 samples is used for vel and acc data
             self.alpha_a = 0.15                         # weight of the exponential moving average filter for human acceleration
 
         self.past_human_state_est = np.zeros((9, self.ma_window))   # history of the human state estimation, last elements are most recent
