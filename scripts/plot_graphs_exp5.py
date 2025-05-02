@@ -70,7 +70,7 @@ def main():
     # bag_file_name = '2024-03-26-12-42-34_Exp1_noHuman.bag'
     # bag_file_name = '2024-03-26-12-46-15_Exp1_withHuman.bag'
     # bag_file_name = 'experiment_1/exp1_good_try_withHuman.bag'
-    bag_file_name = 'exp5_1.bag'
+    bag_file_name = 'exp5_2.bag'
 
     # load the strainmap dictionary used in the experiment
     file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps','Passive','differentiable_strainmaps_allTendons.pkl')
@@ -160,27 +160,11 @@ def main():
             else:
                 interaction_force_magnitude = np.vstack((interaction_force_magnitude, np.hstack((np.linalg.norm(msg.data[0:3]), time_curr))))
 
-
-        print('Extracting muscle activation')
-        num_muscles = 22
-        index_sspa = 18
-        muscle_activation_max = None
-        muscle_activation_sspa = None
-        for _, msg, time_msg in bag.read_messages(topics=['/estimated_muscle_activation']):
-            time_curr = time_msg.to_time()
-            if muscle_activation_max is None:
-                muscle_activation_max = np.hstack((np.max(msg.data[0:num_muscles]), time_curr))
-                muscle_activation_sspa = np.hstack((msg.data[index_sspa], time_curr))
-            else:
-                muscle_activation_max = np.vstack((muscle_activation_max, np.hstack((np.max(msg.data[0:num_muscles]), time_curr))))
-                muscle_activation_sspa = np.vstack((muscle_activation_sspa, np.hstack((msg.data[index_sspa], time_curr))))
-
-
     num_optim = int(optimal_trajectory.shape[0]/6)
 
     # Now, let's filter the data to retain only the interesting part of the experiment
     # (i.e., when the subject is wearing the brace properly and the robot is moving)
-    init_time = xyz_curr[int(xyz_curr.shape[0]/100*5), -1]         # identify initial timestep
+    init_time = xyz_curr[int(xyz_curr.shape[0]/100*40), -1]         # identify initial timestep
     end_time = xyz_curr[int(xyz_curr.shape[0]/100*90), -1] - init_time # identify final timestep
 
     estimated_shoulder_state[:,-1] = estimated_shoulder_state[:,-1] - init_time   # center time values starting at initial time
@@ -195,10 +179,6 @@ def main():
     if interaction_force_magnitude is not None:
         interaction_force_magnitude[:,-1] = interaction_force_magnitude[:,-1] - init_time
 
-    if muscle_activation_max is not None:
-        muscle_activation_max[:,-1] = muscle_activation_max[:,-1] - init_time
-        muscle_activation_sspa[:,-1] = muscle_activation_sspa[:,-1] - init_time
-
     estimated_shoulder_state = estimated_shoulder_state[(estimated_shoulder_state[:,-1]>0) & (estimated_shoulder_state[:,-1]<end_time)]
     xyz_curr = xyz_curr[(xyz_curr[:,-1]>0) & (xyz_curr[:,-1]<end_time)]    # retain data after initial time
     xyz_cmd = xyz_cmd[(xyz_cmd[:,-1]>0) & (xyz_cmd[:,-1]<end_time)]
@@ -210,11 +190,6 @@ def main():
     if interaction_force_magnitude is not None:
         interaction_force_magnitude = interaction_force_magnitude[(interaction_force_magnitude[:,-1]>0) & (interaction_force_magnitude[:,-1]<end_time)]
     
-    if muscle_activation_max is not None:
-        muscle_activation_max = muscle_activation_max[(muscle_activation_max[:,-1]>0) & (muscle_activation_max[:,-1]<end_time)]
-        muscle_activation_sspa = muscle_activation_sspa[(muscle_activation_sspa[:,-1]>0) & (muscle_activation_sspa[:,-1]<end_time)]
-
-
     strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4])
 
     # visualize 2D trajectory on strainmap
@@ -392,7 +367,7 @@ def main():
     ax.set_ylabel('[m]')
     ax.set_xlabel('time [s]')
     ax.legend()
-    fig.suptitle("EXP1: EE cartesian position")
+    fig.suptitle("EXP5: EE cartesian position")
 
     # visualize orientation mismatch between commanded and executed motion
 
@@ -423,7 +398,7 @@ def main():
     ax.set_ylabel('[deg]')
     ax.set_xlabel('time [s]')
     ax.legend()
-    fig.suptitle("EXP1: EE orientation")
+    fig.suptitle("EXP5: EE orientation")
 
     # retrieve the accelerations that the arm will undergo following optimal trajectory
     time_diff = 0.1
@@ -460,16 +435,6 @@ def main():
         ax.plot(interaction_force_magnitude[:,-1], interaction_force_magnitude_filt)
         ax.set_ylabel('[N]')
         ax.set_title('Interaction force')
-
-    if muscle_activation_sspa is not None:
-        fig = plt.figure()
-        ax = fig.add_subplot()
-        ax.plot(muscle_activation_sspa[:,-1], muscle_activation_sspa[:,0])
-        ax.set_ylabel('activation')
-        ax.set_title('Supraspinatus Anterior')
-
-        # print to screen the average maximum muscle activation
-        print('Average maximum activation: ', np.mean(muscle_activation_max[:, 0]))
 
     data = {}
     data['optimal_trajectory'] = optimal_trajectory
