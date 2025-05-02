@@ -12,3 +12,4 @@ opensim.log
 __pycache__/
 *.pyc
 *.log
+Personal_Results/
