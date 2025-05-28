@@ -526,7 +526,8 @@ class TO_module:
         """
         Callback receiving the most recent estimate of the muscle activity, and updating parameters accordingly
         """
-        self.setActivationLevel(data.data[experimental_params['index_muscle']])
+        if experimental_params['index_muscle'] is not None:
+            self.setActivationLevel(data.data[experimental_params['index_muscle']])
 
     
     def keepOptimizing(self):
