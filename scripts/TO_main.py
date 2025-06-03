@@ -30,8 +30,6 @@ from scipy.spatial.transform import Rotation as R
 import pickle
 
 from botasensone import BotaSerialSensor
-from RMRsolver import RMRsolver
-import utilsObjectives as utilsObj
 import warnings
 
 # import parser
@@ -68,34 +66,11 @@ if __name__ == '__main__':
             print("option 1: you have not built OpenSim from source on your machine\n\t  (find instructions on how to do so at https://github.com/opensim-org/opensim-core/wiki/Build-Instructions)")
             print("option 2: you have not activated the correct (conda) environment")
             with_opensim = False
-            rmr_solver = None
-            print("Proceeding: no muscle activity will be estimated...")
             
         else:
             with_opensim = True
             opensim_model = opensim.Model(os.path.join(path_to_model, model_name_osim))
 
-            # select the ulna reference frame as the frame to which the interaction forces between human and robot are applied
-            ulna_body = opensim_model.updBodySet().get('ulna')
-            prescribed_force_ulna = opensim.PrescribedForce("ulna_force", ulna_body)
-            prescribed_force_ulna.setPointIsInGlobalFrame(False)
-            prescribed_force_ulna.setForceIsInGlobalFrame(False)
-            prescribed_force_ulna.setPointFunctions(opensim.Constant(0.0), opensim.Constant(0.0), opensim.Constant(0.0))     # point of application of the force in body reference frame
-            prescribed_force_ulna.setForceFunctions(opensim.Constant(0.0), opensim.Constant(0.0), opensim.Constant(0.0))
-            prescribed_force_ulna.setTorqueFunctions(opensim.Constant(0.0), opensim.Constant(0.0), opensim.Constant(0.0))
-
-            opensim_model.addForce(prescribed_force_ulna)
-
-            # instantiate the RMR solver object
-            print("OpenSim found, RMR solver will be used")
-            weights = np.concatenate((np.ones(22), 10*np.ones(3)))
-            objective = utilsObj.ActSquared(weights)
-            rmr_solver = RMRsolver(opensim_model, 
-                                   constrainActDyn=True, 
-                                   constrainGHjoint=True, 
-                                   actuatorReserveBounds=[-1e6, 1e6], 
-                                   prescribedForceIndex = [opensim_model.getForceSet().getIndex(prescribed_force_ulna)])
-            rmr_solver.setObjective(objective)
 
         ## PARAMETERS -----------------------------------------------------------------------------------------------
         # import the parameters for the experiment as defined in e xperiment_parameters.py
@@ -207,8 +182,7 @@ if __name__ == '__main__':
                                     with_opensim = with_opensim,
                                     simulation = simulation,
                                     speed_estimate = speed_estimate,
-                                    ft_sensor=sensor,
-                                    rmr_solver = rmr_solver)
+                                    ft_sensor=sensor)
 
         # set the strainmap to operate onto, extracting the information from a file
         if file_strainmaps is not None:
@@ -251,6 +225,7 @@ if __name__ == '__main__':
 
         # Wait until the robot has reached the required position, and proceed only when the current shoulder pose is published
         to_module.waitForShoulderState()
+        rospy.sleep(0.5)        # leave just a bit of time here
 
         # set up the NLP
         if use_casadi_function:

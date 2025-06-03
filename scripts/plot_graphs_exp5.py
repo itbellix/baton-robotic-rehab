@@ -164,8 +164,8 @@ def main():
 
     # Now, let's filter the data to retain only the interesting part of the experiment
     # (i.e., when the subject is wearing the brace properly and the robot is moving)
-    init_time = xyz_curr[int(xyz_curr.shape[0]/100*40), -1]         # identify initial timestep
-    end_time = xyz_curr[int(xyz_curr.shape[0]/100*90), -1] - init_time # identify final timestep
+    init_time = xyz_curr[int(xyz_curr.shape[0]/100*43), -1]         # identify initial timestep
+    end_time = xyz_curr[int(xyz_curr.shape[0]/100*92), -1] - init_time # identify final timestep
 
     estimated_shoulder_state[:,-1] = estimated_shoulder_state[:,-1] - init_time   # center time values starting at initial time
     xyz_curr[:,-1] = xyz_curr[:,-1] - init_time
@@ -193,6 +193,11 @@ def main():
     strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4])
 
     # visualize 2D trajectory on strainmap
+    start = np.array([50, 100])
+    goal_1 = np.array([100, 100])
+    goal_2 = np.array([60, 60])
+    goal_3 = np.array([60, 110])
+    
     fig = plt.figure()
     ax = fig.add_subplot()
     cb =ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=0, vmax=strainmap.max())
@@ -211,23 +216,29 @@ def main():
     ax.legend()
     ax.set_title("EXP1: Trajectory on strainmap (with human)")
 
-    # visualize 2D trajectory on strainmap
-    fig = plt.figure()
-    ax = fig.add_subplot()
-    cb =ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=1.5, vmax=3.2)
-    fig.colorbar(cb, ax=ax, label = 'Strain [%]')
-    ax.scatter(np.array([50]), np.array([100]), label = 'start', edgecolors='black', s=50, zorder=1)
-    ax.scatter(np.array([100]), np.array([100]), label = 'goal1', edgecolors='black', s=50, zorder=1)
-    ax.scatter(np.array([60]), np.array([60]), label = 'goal2', edgecolors='black', s=50, zorder=1)
-    ax.scatter(np.array([60]), np.array([110]), label = 'goal3', edgecolors='black', c='pink', s=50, zorder=1)
-    ax.plot(np.rad2deg(estimated_shoulder_state[:-1, 0]), np.rad2deg(estimated_shoulder_state[:-1, 2]), linewidth=2, zorder=0)
-    ax.axis('equal')
-    ax.set_xlim(30, 120)
-    ax.set_ylim(60, 120)
-    ax.set_xlabel("Plane of elevation [deg]")
-    ax.set_ylabel("Shoulder elevation [deg]")
-    ax.legend()
-    ax.set_title("EXP1: Trajectory on strainmap (with human)")
+    # also, we compute the smoothness of the curve as integral of squared jerk
+    dt = np.mean(np.diff(estimated_shoulder_state[:,-1]))
+
+    x_traj = estimated_shoulder_state[:-1, 0]
+    y_traj = estimated_shoulder_state[:-1, 2]
+
+    vel_x = np.gradient(x_traj, dt)
+    vel_y = np.gradient(y_traj, dt)
+    acc_x = np.gradient(vel_x, dt)
+    acc_y = np.gradient(vel_y, dt)
+    jerk_x = np.gradient(acc_x, dt)
+    jerk_y = np.gradient(acc_y, dt)
+
+    # zero crossings velocity
+    zero_crossings_x = np.sum(np.diff(np.sign(vel_x)) != 0)
+    zero_crossings_y = np.sum(np.diff(np.sign(vel_y)) != 0)
+
+    # compute integrated squared jerk and normalize it wrt trajectory duration and distance between way-points
+    duration = 5
+    distance = np.deg2rad(np.linalg.norm(goal_1 - start) + np.linalg.norm(goal_2 - goal_1) + np.linalg.norm(goal_3 - goal_2))
+    isj = np.sum(jerk_x**2 + jerk_y**2) * dt / (duration * distance)
+
+    print(f"ISJ: {isj:.3f}, Zero-crossings Acc X: {zero_crossings_x}, Acc Y: {zero_crossings_y}")
 
     # # visualize strain along the optimal path, and along the quickest trajectory
     # # Note, in the following there is quite a lot of hardcoded things, to select the correct data for this particular run of the experiment
@@ -295,6 +306,8 @@ def main():
     ax.set_xlabel('Time [s]')
     ax.legend()
 
+    print(f"Mean strain: {np.mean(strain_real_path)} [%]")
+
     # strain along the shortest path, equivalent to traveling directly from start to goal every time (here no "waiting phase" is accounted for)
     fig = plt.figure()
     ax = fig.add_subplot()
@@ -304,37 +317,42 @@ def main():
     ax.legend()
     
     # visualize the human trajectory along the individual human DoF
-    reference_se = np.hstack((optimal_trajectory[0, :-1], optimal_trajectory[6, :-1], optimal_trajectory[12, :-1]))
-    time_est = np.linspace(estimated_shoulder_state[0,-1], estimated_shoulder_state[-1,-1], len(estimated_shoulder_state[:,-1]))
-    time_ref = np.linspace(optimal_trajectory[0, -1], optimal_trajectory[12, -1], len(optimal_trajectory[0,:-1])*3)
-    # plotting the reference is wrong since we do not account for the dead moments in which we wait for the new reference....
-
     fig = plt.figure()
     ax = fig.add_subplot(321)
-    ax.plot(time_est, np.rad2deg(estimated_shoulder_state[:, 0]), label='estimated')
-    ax.plot(time_ref, np.rad2deg(reference_se))
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 0]), label='estimated')
     ax.set_ylabel("PE [°]")
-    ax.legend()
     ax = fig.add_subplot(323)
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 1]))
+    ax.set_ylabel("Estimated PE_dot [°/s]")
+    ax = fig.add_subplot(325)
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 6]))
+    ax.set_ylabel("Estimated PE_ddot [°/s^2]")
+    ax.set_xlabel("Time [@ 10Hz]")
+
+    ax = fig.add_subplot(322)
     ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 2]))
     ax.set_ylabel("Estimated SE[°]")
-    ax = fig.add_subplot(325)
-    ax.plot(estimated_shoulder_state[:,-1],np.rad2deg(estimated_shoulder_state[:, 4]))
-    ax.set_ylabel("Estimated AR [°]")
-    ax.set_xlabel("Time [@ 10Hz]")
-    ax = fig.add_subplot(322)
-    ax.plot(estimated_shoulder_state[:,-1],np.rad2deg(estimated_shoulder_state[:, 1]))
-    ax.set_ylabel("Estimated PE_dot [°/s]")
     ax = fig.add_subplot(324)
-    ax.plot(estimated_shoulder_state[:,-1],np.rad2deg(estimated_shoulder_state[:, 3]))
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 3]))
     ax.set_ylabel("Estimated SE_dot [°/s]")
+    ax.set_xlabel("Time [@ 10Hz]")
     ax = fig.add_subplot(326)
-    ax.plot(estimated_shoulder_state[:,-1],np.rad2deg(estimated_shoulder_state[:, 5]))
-    ax.set_ylabel("Estimated AR_dot [°/s]")
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 7]))
+    ax.set_ylabel("Estimated SE_ddot [°/s^2]")
     ax.set_xlabel("Time [@ 10Hz]")
     ax.legend()
     fig.suptitle("EXP1: individual shoulder angles (with human)")
 
+    # visualize acceleration magnitude (over SE and PE)
+    acc_magn = np.sqrt(np.rad2deg(estimated_shoulder_state[:, 6])**2 + np.rad2deg(estimated_shoulder_state[:, 7])**2)
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    ax.plot(estimated_shoulder_state[:,-1], acc_magn)
+    ax.set_ylabel("[°/s^2]")
+    ax.set_xlabel("Time [@ 10Hz]")
+    ax.set_title("Acceleration magnitude (PE and SE)")
+
+    print(f"Max acc. magnitude: {np.max(acc_magn)}")
 
     # visualize 3D trajectory for the EE position
     fig = plt.figure()
@@ -421,7 +439,7 @@ def main():
 
     # visualize magnitude of interaction force
     if interaction_force_magnitude is not None:
-        fs = 1/(interaction_force_magnitude[1,-1] - interaction_force_magnitude[0, -1])
+        fs = 1/(np.mean(np.diff(interaction_force_magnitude[:,-1])))
         cutoff = 20
         order = 2
         nyquist = 0.5 * fs

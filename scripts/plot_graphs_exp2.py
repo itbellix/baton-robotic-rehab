@@ -83,12 +83,19 @@ def main():
     code_path = os.path.dirname(os.path.realpath(__file__))     # getting path to where this script resides
     path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
     path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags', 'experiment_2')
-    # bag_file_name = '2024-05-07-19-05-30_exp2.bag'      # for experiment without activation
-    bag_file_name = 'exp2_active_4.bag'    # for experiment with activation
+    bag_file_name = 'new_video_3.bag'       # for experiment without activation: bag_file_name = 'new_video_1.bag'
+                                            #       init_time = xyz_curr[int(xyz_curr.shape[0]/100*17.5), -1]
+                                            #       end_time = xyz_curr[int(xyz_curr.shape[0]/100*22.5), -1] - init_time
+                                            #
+                                            # for experiment with activation: bag_file_name = 'new_video_3.bag'
+                                            #       init_time = xyz_curr[int(xyz_curr.shape[0]/100*79), -1]
+                                            #        end_time = xyz_curr[int(xyz_curr.shape[0]/100*87), -1] - init_time
+
+
 
     # load the strainmap dictionary used in the experiment
     # file_strainmaps = '/home/itbellix/Desktop/GitHub/PTbot_official/Personal_Results/Strains/Passive/AllMuscles/params_strainmaps_num_Gauss_3/params_strainmaps_num_Gauss_3.pkl' 
-    file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models', 'Strain Maps', 'Active', 'differentiable_strainmaps_ISI.pkl')
+    file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models', 'Strain Maps', 'Active', 'differentiable_strainmaps_SSPA.pkl')
 
     # instantiate variables (they will be Mx4 matrices, where M is variable -number of data- and the last column is the timestamp)
     estimated_shoulder_state = None
@@ -196,8 +203,8 @@ def main():
 
     # Now, let's filter the data to retain only the interesting part of the experiment
     # (i.e., when the subject is wearing the brace properly and the robot is moving)
-    init_time = xyz_curr[int(xyz_curr.shape[0]/100*1), -1]         # identify initial timestep
-    end_time = xyz_curr[int(xyz_curr.shape[0]/100*99), -1] - init_time # identify final timestep
+    init_time = xyz_curr[int(xyz_curr.shape[0]/100*79), -1]         # identify initial timestep
+    end_time = xyz_curr[int(xyz_curr.shape[0]/100*87), -1] - init_time # identify final timestep
 
     estimated_shoulder_state[:,-1] = estimated_shoulder_state[:,-1] - init_time   # center time values starting at initial time
     xyz_curr[:,-1] = xyz_curr[:,-1] - init_time
@@ -236,18 +243,15 @@ def main():
 
     optimal_trajectory = np.stack(filtered_trajectories, axis=0)        # stack everything into a 3D array again
 
-    strainmap_act0_0 = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4])
+    strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4], 0)
+    max_strain = 1.9    # play with this number a bit to get best visualizations
     
 
-    # visualize 2D trajectory on strainmap (zero activation)    USING bag_file_name = '2024-05-07-19-05-30_exp2.bag'
-    len_data = len(estimated_shoulder_state)
-    begin_d = int(len_data/100*0.01)
-    end_d = int(len_data/100*29.0)
-
+    # visualize 2D trajectory on strainmap
     fig = plt.figure()
     ax = fig.add_subplot()
-    cb = ax.imshow(strainmap_act0_0.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=strainmap_act0_0.min(), vmax=0.5)
-    ax.plot(np.rad2deg(estimated_shoulder_state[begin_d:end_d, 0]), np.rad2deg(estimated_shoulder_state[begin_d:end_d, 2]))
+    cb = ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=strainmap.min(), vmax=max_strain)
+    ax.plot(np.rad2deg(estimated_shoulder_state[:, 0]), np.rad2deg(estimated_shoulder_state[:, 2]))
     ax.scatter(np.array([45]), np.array([95]), label = 'goal', c = 'green', edgecolors='black')
     ax.scatter(np.array([60]), np.array([60]), label = 'start', c='red', edgecolors='black')
     ax.set_ylim(45, 110)
@@ -257,27 +261,6 @@ def main():
     ax.legend()
     ax.set_title("EXP2: Trajectory on strainmap (0 activation)")
     fig.colorbar(cb)
-
-    # visualize 2D trajectory on strainmap
-    strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4])
-
-    # visualize 2D trajectory on strainmap
-    fig = plt.figure()
-    ax = fig.add_subplot()
-    # cb =ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=0, vmax=strainmap.max())
-    # fig.colorbar(cb, ax=ax, label = 'Strain [%]')
-    ax.plot(np.rad2deg(estimated_shoulder_state[:-1, 0]), np.rad2deg(estimated_shoulder_state[:-1, 2]))
-    ax.scatter(np.array([50]), np.array([100]), label = 'start')
-    ax.scatter(np.array([100]), np.array([100]), label = 'goal1')
-    ax.scatter(np.array([50]), np.array([70]), label = 'goal2')
-    ax.scatter(np.array([60]), np.array([110]), label = 'goal3', c='black')
-
-    # plot also the optimal trajectories
-    np.rad2deg(estimated_shoulder_state[begin_d:end_d, 0]), np.rad2deg(estimated_shoulder_state[begin_d:end_d, 2])
-    ax.set_xlabel("Plane of elevation [deg]")
-    ax.set_ylabel("Shoulder elevation [deg]")
-    ax.legend()
-    ax.set_title("EXP2: Trajectory on strainmap (with human)")
 
     # visualize individual human DoF
     fig = plt.figure()
@@ -363,18 +346,9 @@ def main():
 
     # visualize magnitude of interaction force
     if interaction_torque_x is not None:
-        fs = 1/(interaction_torque_x[11,-1] - interaction_torque_x[10, -1])
-        cutoff = 1
-        order = 2
-        nyquist = 0.5 * fs
-        normal_cutoff = cutoff / nyquist
-        b, a = butter(order, normal_cutoff, btype='low', analog=False)
-        interaction_torque_x_filt = filtfilt(b, a, interaction_torque_x[:,0])
-
         fig = plt.figure()
         ax = fig.add_subplot()
         ax.plot(interaction_torque_x[:,-1], interaction_torque_x[:,0])
-        ax.plot(interaction_torque_x[:,-1], interaction_torque_x_filt)
         ax.set_ylabel('[N]')
         ax.set_title('Interaction torque (x)')
 
@@ -383,7 +357,7 @@ def main():
         ax = fig.add_subplot()
         ax.plot(muscle_activation_selected[:,-1], muscle_activation_selected[:,0])
         ax.set_ylabel('activation')
-        ax.set_title('Supraspinatus Anterior')
+        ax.set_title('Infraspinatus Inferior')
 
         # print to screen the average maximum muscle activation
         print('Average maximum activation: ', np.mean(muscle_activation_max[:, 0]))
