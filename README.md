@@ -3,40 +3,7 @@ BATON is a novel method for planning biomechanics-aware robotic rehabilitation t
 
 <img src="Media/visual_abstract.png" height="300" />
 
-Our approach is presented in detail in:
-
-```bib
-@article{belli2024biomechanics,
-  title={Biomechanics-Aware Trajectory Optimization for Navigation during Robotic Physiotherapy},
-  author={Belli, Italo and Prendergast, J Micah and Seth, Ajay and Peternel, Luka},
-  journal={arXiv preprint arXiv:2411.03873},
-  year={2024}
-}
-```
-
-
-<table align="center">
-  <tr>
-    <td colspan="2" align="center">Funding Institutions</td>
-  </tr>
-  <tr>
-    <td align="center">
-      <a>
-        <img src="https://user-images.githubusercontent.com/50029203/226883398-97b28065-e144-493b-8a6c-5cbbd9000411.png" alt="TUD logo" height="128">
-        <br />
-        <a href="https://www.tudelft.nl/3me/over/afdelingen/cognitive-robotics-cor">Cognitive Robotics</a> and <br />
-        <a href="https://www.tudelft.nl/3me/over/afdelingen/biomechanical-engineering">Biomechanical Engineering</a> at TU Delft</p>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://chanzuckerberg.com/">
-        <img src="https://user-images.githubusercontent.com/50029203/226883506-fbb59348-38a4-43f9-93c9-2c7b8ba63619.png" alt="CZI logo" width="128" height="128">
-        <br />
-        Chan Zuckerberg Initiative
-      </a>
-    </td>
-  </tr>
-</table>
+This version of the repository has been anonymized with https://anonymous.4open.science/anonymize for double-blind review.
 
 ## Features
 When rehabilitating from rotator cuff tears, physiotherapy aims at gaining a large range of motion while avoiding injuries to the healing tendon(s). A robot that interacts with patients at this stage needs to have insights into the inner functioning of the human tissues. Our innovation consists in considering a [state-of-the-art biomechanical model of the human shoulder](https://simtk.org/projects/scapulothoracic) to extract:
@@ -88,12 +55,6 @@ If you encounter any troubles or issues with running the code contained in this 
 
 ## License
 Our code is licensed under the Apache 2.0 license (see the `LICENSE_code` file), while the data and models are licensed under CC BY 4.0 Use Agreement terms.
-```
-Technische Universiteit Delft hereby disclaims all copyright interest in the program “BATON: Biomechanics-Aware Trajectory Optimization for Navigation during robotic physiotherapy”
-developed by the Author(s).
-
-Prof. Dr. Ir. Fred van Keulen, Dean of Faculty of Mechanical, Maritime and Materials Engineering (3mE).
-```
 
 ## Contributors
 Italo Belli
