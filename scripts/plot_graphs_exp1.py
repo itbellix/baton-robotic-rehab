@@ -67,10 +67,7 @@ def main():
     code_path = os.path.dirname(os.path.realpath(__file__))     # getting path to where this script resides
     path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
     path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags', 'experiment_1')
-    # bag_file_name = '2024-03-26-12-42-34_Exp1_noHuman.bag'
-    # bag_file_name = '2024-03-26-12-46-15_Exp1_withHuman.bag'
-    # bag_file_name = 'experiment_1/exp1_good_try_withHuman.bag'
-    bag_file_name = 'exp1_2.bag'
+    bag_file_name = 'exp1_higherFreq_1.bag'
 
     # load the strainmap dictionary used in the experiment
     file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps','Passive','differentiable_strainmaps_allTendons.pkl')
@@ -184,8 +181,8 @@ def main():
 
     # Now, let's filter the data to retain only the interesting part of the experiment
     # (i.e., when the subject is wearing the brace properly and the robot is moving)
-    init_time = xyz_curr[int(xyz_curr.shape[0]/100*5), -1]         # identify initial timestep
-    end_time = xyz_curr[int(xyz_curr.shape[0]/100*90), -1] - init_time # identify final timestep
+    init_time = xyz_curr[int(xyz_curr.shape[0]/100*45), -1]         # identify initial timestep
+    end_time = xyz_curr[int(xyz_curr.shape[0]/100*93), -1] - init_time # identify final timestep
 
     estimated_shoulder_state[:,-1] = estimated_shoulder_state[:,-1] - init_time   # center time values starting at initial time
     xyz_curr[:,-1] = xyz_curr[:,-1] - init_time
@@ -218,15 +215,19 @@ def main():
     strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4])
 
     # visualize 2D trajectory on strainmap
+    start = np.array([50, 100])
+    goal_1 = np.array([100, 100])
+    goal_2 = np.array([60, 60])
+    goal_3 = np.array([60, 110])
     fig = plt.figure()
     ax = fig.add_subplot()
     cb =ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=0, vmax=strainmap.max())
     fig.colorbar(cb, ax=ax, label = 'Strain [%]')
     ax.plot(np.rad2deg(estimated_shoulder_state[:-1, 0]), np.rad2deg(estimated_shoulder_state[:-1, 2]))
-    ax.scatter(np.array([50]), np.array([100]), label = 'start')
-    ax.scatter(np.array([100]), np.array([100]), label = 'goal1')
-    ax.scatter(np.array([50]), np.array([70]), label = 'goal2')
-    ax.scatter(np.array([60]), np.array([110]), label = 'goal3', c='black')
+    ax.scatter(start[0], start[1], label = 'start')
+    ax.scatter(goal_1[0], goal_1[1], label = 'goal1')
+    ax.scatter(goal_2[0], goal_2[1], label = 'goal2')
+    ax.scatter(goal_3[0], goal_3[1], label = 'goal3', c='black')
     # plot also the optimal trajectories
     ax.plot(np.rad2deg(optimal_trajectory[0,:-1]), np.rad2deg(optimal_trajectory[2,:-1]))
     ax.plot(np.rad2deg(optimal_trajectory[6,:-1]), np.rad2deg(optimal_trajectory[8,:-1]))
@@ -235,6 +236,30 @@ def main():
     ax.set_ylabel("Shoulder elevation [deg]")
     ax.legend()
     ax.set_title("EXP1: Trajectory on strainmap (with human)")
+
+    # also, we compute the smoothness of the curve as integral of squared jerk
+    dt = np.mean(np.diff(estimated_shoulder_state[:,-1]))
+
+    x_traj = estimated_shoulder_state[:-1, 0]
+    y_traj = estimated_shoulder_state[:-1, 2]
+
+    vel_x = np.gradient(x_traj, dt)
+    vel_y = np.gradient(y_traj, dt)
+    acc_x = np.gradient(vel_x, dt)
+    acc_y = np.gradient(vel_y, dt)
+    jerk_x = np.gradient(acc_x, dt)
+    jerk_y = np.gradient(acc_y, dt)
+
+    # zero crossings velocity
+    zero_crossings_x = np.sum(np.diff(np.sign(vel_x)) != 0)
+    zero_crossings_y = np.sum(np.diff(np.sign(vel_y)) != 0)
+
+    # compute integrated squared jerk and normalize it wrt trajectory duration and distance between way-points
+    duration = 5
+    distance = np.deg2rad(np.linalg.norm(goal_1 - start) + np.linalg.norm(goal_2 - goal_1) + np.linalg.norm(goal_3 - goal_2))
+    isj = np.sum(jerk_x**2 + jerk_y**2) * dt / (duration * distance)
+
+    print(f"ISJ: {isj:.3f}, Zero-crossings velocity X: {zero_crossings_x}, velocity Y: {zero_crossings_y}")
 
     # visualize 2D trajectory on strainmap
     fig = plt.figure()
@@ -264,20 +289,26 @@ def main():
     time_beginning_1 = optimal_trajectory[6,-1]
     index_beginning_1 = np.where(estimated_shoulder_state[:,-1]-time_beginning_1>-4e-3)[0][0]
     position_beginning_1 = np.rad2deg(estimated_shoulder_state[index_beginning_1, [0, 2]])
+    time_end_1 = time_beginning_1 + 5   # we know optimal trajectory should last 5.0 seconds
+    index_end_1 = np.where(estimated_shoulder_state[:,-1]-time_end_1>-4e-3)[0][0]
 
     time_beginning_2 = optimal_trajectory[12,-1]
     index_beginning_2 = np.where(abs(estimated_shoulder_state[:,-1]-time_beginning_2)<4e-3)[0][0]
     position_beginning_2 = np.rad2deg(estimated_shoulder_state[index_beginning_2, [0, 2]])
+    time_end_2 = time_beginning_2 + 5   # we know optimal trajectory should last 5.0 seconds
+    index_end_2 = np.where(estimated_shoulder_state[:,-1]-time_end_2>-4e-3)[0][0]
 
     time_beginning_3 = optimal_trajectory[18,-1]
     index_beginning_3 = np.where(abs(estimated_shoulder_state[:,-1]-time_beginning_3)<4e-3)[0][0]
     position_beginning_3 = np.rad2deg(estimated_shoulder_state[index_beginning_3, [0, 2]])
+    time_end_3 = time_beginning_3 + 5   # we know optimal trajectory should last 5.0 seconds
+    index_end_3 = np.where(estimated_shoulder_state[:,-1]-time_end_3>-4e-3)[0][0]
 
     position_end = np.rad2deg(estimated_shoulder_state[-1, [0, 2]])
 
 
     shortest_path_1 = np.vstack((np.linspace(position_beginning_1[0], position_beginning_2[0], 51), np.linspace(position_beginning_1[1], position_beginning_2[1], 51)))
-    real_path_1 = np.rad2deg(np.vstack((estimated_shoulder_state[index_beginning_1:index_beginning_2, 0], estimated_shoulder_state[index_beginning_1:index_beginning_2, 2])))
+    real_path_1 = np.rad2deg(np.vstack((estimated_shoulder_state[index_beginning_1:index_end_1, 0], estimated_shoulder_state[index_beginning_1:index_end_1, 2])))
     new_indices = np.linspace(0, real_path_1.shape[1]-1, num_samples).astype(int)
     real_path_1_sampled = real_path_1[:, new_indices]   # resample the real path to get only 51 points out of it
     index_shortest_path_1_on_strainmap = np.around(np.vstack(((shortest_path_1[0,:] - min_pe)/step, (shortest_path_1[1,:] - min_se)/step)), 0).astype(int)
@@ -287,7 +318,7 @@ def main():
     strain_real_path_1 = np.transpose(strainmap[index_real_path_1_on_strainmap[0,:], index_real_path_1_on_strainmap[1,:]])
 
     shortest_path_2 = np.vstack((np.linspace(position_beginning_2[0], position_beginning_3[0], 51), np.linspace(position_beginning_2[1], position_beginning_3[1], 51)))
-    real_path_2 = np.rad2deg(np.vstack((estimated_shoulder_state[index_beginning_2:index_beginning_3, 0], estimated_shoulder_state[index_beginning_2:index_beginning_3, 2])))
+    real_path_2 = np.rad2deg(np.vstack((estimated_shoulder_state[index_beginning_2:index_end_2, 0], estimated_shoulder_state[index_beginning_2:index_end_2, 2])))
     new_indices = np.linspace(0, real_path_2.shape[1]-1, num_samples).astype(int)
     real_path_2_sampled = real_path_2[:, new_indices]   # resample the real path to get only 51 points out of it
     index_shortest_path_2_on_strainmap = np.around(np.vstack(((shortest_path_2[0,:] - min_pe)/step, (shortest_path_2[1,:] - min_se)/step)), 0).astype(int)
@@ -297,7 +328,7 @@ def main():
     strain_real_path_2 = np.transpose(strainmap[index_real_path_2_on_strainmap[0,:], index_real_path_2_on_strainmap[1,:]])
 
     shortest_path_3 = np.vstack((np.linspace(position_beginning_3[0], position_end[0], 51), np.linspace(position_beginning_3[1], position_end[1], 51)))
-    real_path_3 = np.rad2deg(np.vstack((estimated_shoulder_state[index_beginning_3:, 0], estimated_shoulder_state[index_beginning_3:, 2])))
+    real_path_3 = np.rad2deg(np.vstack((estimated_shoulder_state[index_beginning_3:index_end_3, 0], estimated_shoulder_state[index_beginning_3:index_end_3, 2])))
     new_indices = np.linspace(0, real_path_3.shape[1]-1, num_samples).astype(int)
     real_path_3_sampled = real_path_3[:, new_indices]   # resample the real path to get only 51 points out of it
     index_shortest_path_3_on_strainmap = np.around(np.vstack(((shortest_path_3[0,:] - min_pe)/step, (shortest_path_3[1,:] - min_se)/step)), 0).astype(int)
@@ -320,6 +351,8 @@ def main():
     ax.set_xlabel('Time [s]')
     ax.legend()
 
+    print(f"Mean strain: {np.mean(strain_real_path)} [%]")
+
     # strain along the shortest path, equivalent to traveling directly from start to goal every time (here no "waiting phase" is accounted for)
     fig = plt.figure()
     ax = fig.add_subplot()
@@ -339,27 +372,38 @@ def main():
     ax.plot(time_est, np.rad2deg(estimated_shoulder_state[:, 0]), label='estimated')
     ax.plot(time_ref, np.rad2deg(reference_se))
     ax.set_ylabel("PE [°]")
-    ax.legend()
     ax = fig.add_subplot(323)
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 1]))
+    ax.set_ylabel("Estimated PE_dot [°/s]")
+    ax = fig.add_subplot(325)
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 6]))
+    ax.set_ylabel("Estimated PE_ddot [°/s^2]")
+    ax.set_xlabel("Time [@ 10Hz]")
+
+    ax = fig.add_subplot(322)
     ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 2]))
     ax.set_ylabel("Estimated SE[°]")
-    ax = fig.add_subplot(325)
-    ax.plot(estimated_shoulder_state[:,-1],np.rad2deg(estimated_shoulder_state[:, 4]))
-    ax.set_ylabel("Estimated AR [°]")
-    ax.set_xlabel("Time [@ 10Hz]")
-    ax = fig.add_subplot(322)
-    ax.plot(estimated_shoulder_state[:,-1],np.rad2deg(estimated_shoulder_state[:, 1]))
-    ax.set_ylabel("Estimated PE_dot [°/s]")
     ax = fig.add_subplot(324)
-    ax.plot(estimated_shoulder_state[:,-1],np.rad2deg(estimated_shoulder_state[:, 3]))
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 3]))
     ax.set_ylabel("Estimated SE_dot [°/s]")
+    ax.set_xlabel("Time [@ 10Hz]")
     ax = fig.add_subplot(326)
-    ax.plot(estimated_shoulder_state[:,-1],np.rad2deg(estimated_shoulder_state[:, 5]))
-    ax.set_ylabel("Estimated AR_dot [°/s]")
+    ax.plot(estimated_shoulder_state[:,-1], np.rad2deg(estimated_shoulder_state[:, 7]))
+    ax.set_ylabel("Estimated SE_ddot [°/s^2]")
     ax.set_xlabel("Time [@ 10Hz]")
     ax.legend()
     fig.suptitle("EXP1: individual shoulder angles (with human)")
 
+    # visualize acceleration magnitude (over SE and PE)
+    acc_magn = np.sqrt(np.rad2deg(estimated_shoulder_state[:, 6])**2 + np.rad2deg(estimated_shoulder_state[:, 7])**2)
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    ax.plot(estimated_shoulder_state[:,-1], acc_magn)
+    ax.set_ylabel("[°/s^2]")
+    ax.set_xlabel("Time [@ 10Hz]")
+    ax.set_title("Acceleration magnitude (PE and SE)")
+
+    print(f"Max acc. magnitude: {np.max(acc_magn)}")
 
     # visualize 3D trajectory for the EE position
     fig = plt.figure()
@@ -461,7 +505,8 @@ def main():
 
     # visualize magnitude of interaction force
     if interaction_force_magnitude is not None:
-        fs = 1/(interaction_force_magnitude[1,-1] - interaction_force_magnitude[0, -1])
+        # find the average frequency of the force data
+        fs = 1/(np.mean(np.diff(interaction_force_magnitude[:,-1])))
         cutoff = 20
         order = 2
         nyquist = 0.5 * fs

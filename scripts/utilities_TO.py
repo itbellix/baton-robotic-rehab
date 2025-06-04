@@ -36,7 +36,7 @@ class TO_module:
     """
     Trajectory Optimization module.
     """
-    def __init__(self, nlps, shared_ros_topics, rate=200, with_opensim = False, simulation = 'true', speed_estimate:Bool=False, ft_sensor=None, rmr_solver=None):
+    def __init__(self, nlps, shared_ros_topics, rate=200, with_opensim = False, simulation = 'true', speed_estimate:Bool=False, ft_sensor=None):
         """"
         The TO_module requires a NLP object when instantiated
         """
@@ -77,16 +77,12 @@ class TO_module:
         self.astar_planner = astar.Astar(nlps.N)    # A* planner for the strain map (as implemented in the RAL paper from Micah)
 
         # parameters regarding the muscle activation
-        self.rmr_solver = rmr_solver                # instance of the RMR solver for estimating muscle activations in real time
         self.varying_activation = False             # initialize the module assuming that the activation will not change
         self.activation_level = 0                   # level of activation of the muscles whose strain we are considering
                                                     # this is an index 
         self.max_activation = 1                     # maximum activation considered (defaulted to 1)
         self.min_activation = 0                     # minimum activation considered (defaulted to 0)
         self.delta_activation = 0.005               # resolution on the activation value that the strain map captures
-
-        self.rmr_thread = None                      # thread that will run the RMR solver
-
 
         # MPC optimal map generated with CasADi opti.to_function() for iteratively solving the same
         # NLP with different parameter values
@@ -114,11 +110,6 @@ class TO_module:
         self.topic_opt_traj = shared_ros_topics['optimal_cartesian_ref_ee']
         self.pub_trajectory = rospy.Publisher(self.topic_opt_traj, PoseStamped, queue_size=1)
         self.flag_pub_trajectory = False    # flag to check if trajectory is being published (default: False = no publishing)
-
-        # create a publisher for the estimated muscle activations and for the compensated interaction forces
-        self.pub_activation = rospy.Publisher(shared_ros_topics['muscle_activation'], Float32MultiArray, queue_size=1)
-        self.pub_compensated_wrench = rospy.Publisher(shared_ros_topics['compensated_wrench'], Float32MultiArray, queue_size=1)
-        
         # Create the publisher for the unused z_reference
         # It will publish the uncompensated z reference when running a real experiment,
         # and the gravity compensated reference when running in simulation.
@@ -134,6 +125,9 @@ class TO_module:
         self.sub_curr_shoulder_pose = rospy.Subscriber(self.topic_shoulder_pose, Float32MultiArray, self._shoulder_pose_cb, queue_size=1)
         self.flag_receiving_shoulder_pose = False       # flag indicating whether the shoulder pose is being received
 
+        # create a subscriber to receive the current estimate for the muscle activation
+        self.sub_curr_activation = rospy.Subscriber(shared_ros_topics['muscle_activation'], Float32MultiArray, self._muscle_activation_cb, queue_size=1)
+        
         # Set up the structure to deal with the new thread, to allow continuous publication of the optimal trajectory and torques
         # The thread itself is created later, with parameters known at run time
         self.x_opt_lock = threading.Lock()          # Lock for synchronizing access to self.x_opt
@@ -419,11 +413,6 @@ class TO_module:
             self.flag_pub_trajectory = True     # update flag
             self.publish_thread.start()         # start the publishing thread
 
-            # start the thread dedicated to the estimation of the muscle activation as well
-            self.rmr_thread = threading.Thread(target=self.estimate_muscle_activation, args=())   # creating the thread
-            self.rmr_thread.daemon = True   # this allows to terminate the thread when the main program ends
-            self.rmr_thread.start()
-
 
     def _shoulder_pose_cb(self, data):
         """
@@ -531,6 +520,14 @@ class TO_module:
         """
         self.flag_run_optimization = data.data
         self.flag_pub_trajectory = data.data
+
+
+    def _muscle_activation_cb(self, data):
+        """
+        Callback receiving the most recent estimate of the muscle activity, and updating parameters accordingly
+        """
+        if experimental_params['index_muscle'] is not None:
+            self.setActivationLevel(data.data[experimental_params['index_muscle']])
 
     
     def keepOptimizing(self):
@@ -763,62 +760,6 @@ class TO_module:
                         self.publishCartRef(cmd_shoulder_pose, cmd_torques, p_gh_in_base, rot_ee_in_base_0, dist_shoulder_ee, adjust_offset = False)
 
             rate.sleep()
-
-
-    def estimate_muscle_activation(self):
-        """
-        This function estimates the current activation level of the human shoulder muscles, based on:
-        - a personalized biomechanical model
-        - the current position, velocity and accelerations of the subject
-        - the interaction wrenches measured by the force-torque sensor
-        """
-        while not rospy.is_shutdown():
-            if self.flag_receiving_shoulder_pose and self.varying_activation:
-                # retrieve position, velocity and acceleration of the shoulder DoFs (order is always pe, se, ar)
-                position_sh = self.state_values_current[0::2]
-                velocity_sh = self.state_values_current[1::2]
-                acceleration_sh = self.state_dot_current[1::2]
-                
-                # retrieve the interaction wrenches from the force-torque sensor
-                if self.ft_sensor.is_functional:
-                    # get the interaction wrench from the force-torque sensor
-                    # note that we set fz = mx = my = 0 as only the other values affect muscle
-                    # activation when the arm is locked in the brace, and the GH center does not move.
-                    interaction_wrench_sensor_frame = np.array([self.ft_sensor.current_reading.fx,
-                                                                self.ft_sensor.current_reading.fy,
-                                                                0,
-                                                                0,
-                                                                0,
-                                                                self.ft_sensor.current_reading.mz])
-                    interaction_forces = experimental_params['ulna_R_sensor'].as_matrix() @ interaction_wrench_sensor_frame[0:3]
-                    interaction_torques = experimental_params['ulna_R_sensor'].as_matrix() @ interaction_wrench_sensor_frame[3:6]
-                    interaction_wrench = - np.hstack((interaction_forces, interaction_torques)) # note the minus sign, as the opposite of what the
-                                                                                                # sensor measures is felt by the human body
-
-                else:
-                    interaction_wrench = np.zeros(6)
-
-                # estimate the muscle activation level for all the muscles in the model
-                current_activation, _, info = self.rmr_solver.solve(time = time.time(), 
-                                                                    position = position_sh, 
-                                                                    speed = velocity_sh, 
-                                                                    acceleration = acceleration_sh, 
-                                                                    values_prescribed_forces = interaction_wrench)
-
-                self.setActivationLevel(current_activation[experimental_params['index_muscle']])         # set the activation level of the muscle we are treating
-
-                # publish the activation level (for debugging and logging)
-                message = Float32MultiArray()
-                message.data = current_activation
-                self.pub_activation.publish(message)
-
-                # publish the interaction wrenches after gravity compensation (for debugging and logging)
-                message = Float32MultiArray()
-                message.data = interaction_wrench
-                self.pub_compensated_wrench.publish(message)
-
-            # sleep for a while
-            self.ros_rate.sleep()
 
 
     def setOptimalReferenceToCurrentPose(self):

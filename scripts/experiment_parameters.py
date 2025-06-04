@@ -358,6 +358,7 @@ experimental_params['elbow_R_sensor'] = elbow_R_sensor
 experimental_params['ar_offset'] = ar_offset
 experimental_params['ulna_R_sensor'] = ulna_R_sensor
 experimental_params['index_muscle'] = index_muscle
+experimental_params['ros_rate'] = loop_frequency
 # -------------------------------------------------------------------------------
 # names of the ROS topics on which the shared communication between biomechanical-based optimization and robot control will happen
 shared_ros_topics = {}
