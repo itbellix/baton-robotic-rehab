@@ -40,24 +40,31 @@ Our approach is presented in detail in:
 
 ## Features
 When rehabilitating from rotator cuff tears, physiotherapy aims at gaining a large range of motion while avoiding injuries to the healing tendon(s). A robot that interacts with patients at this stage needs to have insights into the inner functioning of the human tissues. Our innovation consists in considering a [state-of-the-art biomechanical model of the human shoulder](https://simtk.org/projects/scapulothoracic) to extract:
+- _muscle activations_ during physical human-robot interaction (through a model-based [rapid muscle redundancy solver](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0295003));
 - _strain maps_, which give insights into how tendons are elongated during the rehabilitation movement (as a consequence of the position of the patient, and of the activation in the corresponding muscles);
 - _skeletal dynamics_, capturing the way in which the human position evolves as a function of torques applied to the human model.
 
-These two elements are combined in an optimal control problem that can be solved efficiently in 0.12 s over a time horizon of 1 s divided into 10 steps.
+These elements are combined in an optimal control problem that can be solved efficiently in 0.12 s over a time horizon of 1 s divided into 10 steps.
 
-We exploit a customized version of OpenSimAD that allows us to retrieve a differentiable expression for the dynamics of the original OpenSim model, and can be natively interfaced with CasADi.
+To efficiently consider human skeletal dynamics, we exploit a [customized version](https://github.com/itbellix/opensimAD) of [OpenSimAD](https://github.com/antoinefalisse/opensimAD) that allows us to retrieve a differentiable expression for the dynamics of the original OpenSim model, and can be natively interfaced with [CasADi](https://web.casadi.org/).
 
 ## Requirements
-In order to run `BATON` you will need:
-- an OpenSimAD Conda environment to run the biomechanics-aware optimizations. This can be set up following the instructions at https://github.com/antoinefalisse/opensimAD;
+Our code has been tested on Ubuntu 20.04.
+
+In order to run BATON you will need:
+- an OpenSimAD Conda environment to retrieve your differentiable OpenSim model. This can be set up following the instructions at https://github.com/antoinefalisse/opensimAD
+- OpenSim itself, available either through the official [Conda Package](https://opensimconfluence.atlassian.net/wiki/spaces/OpenSim/pages/53116061/Conda+Package) or (preferably) a [local build](https://github.com/opensim-org/opensim-core/blob/main/scripts/build/opensim-core-linux-build-script.sh)
 - a ROS distribution (we tested our code with [ROS Noetic](http://wiki.ros.org/noetic));
-- a working version of our `iiwa-ros` repository, implementing the impedance controller for the KUKA LBR iiwa collaborative robotic arm that we used in our experiments. Please refer to https://gitlab.tudelft.nl/kuka-iiwa-7-cor-lab/iiwa_ros for obtaining and building it correctly. Note that this repository has quite a few dependency, so make sure to follow the [instalation instructions](https://gitlab.tudelft.nl/kuka-iiwa-7-cor-lab/iiwa_ros/-/blob/main/README.md).
+- a working version of our [`iiwa-impedance-control`](https://gitlab.tudelft.nl/nickymol/iiwa_impedance_control) package, implementing the impedance controller for the KUKA LBR iiwa collaborative robotic arm that we used in our experiments. Please refer to the project page for obtaining and building it correctly. Note that this repository has quite a few dependency, so make sure to follow the [set-up instructions](https://gitlab.tudelft.nl/nickymol/iiwa_impedance_control/-/tree/set_up_instructions?ref_type=heads).
+
+
+In terms of sensing hardware, we used the force/torque sensor Bota SenseONE to monitor contact wrenches between the human and the Kuka robot.
 
 ## Structure
 Our code is organized as follows:
-- [`Code`](https://github.com/itbellix/baton-robotic-rehab/tree/main/Code): this folder contains the code that you can run to explore the functionalities of `BATON` and reproduce its results, in simulation and on the Kuka robot (if you have previously installed the `iiwa-ros` repository). In particular:
-    - `launch` contains the launch files that start the ROS master and take care of bringing up the impedance controller modules, together with Gazebo for simulation
-    - `Python` contains the Python scripts specific to run `BATON` and reproduce our figures
+
+- [`launch`](https://github.com/itbellix/baton-robotic-rehab/tree/main/launch) contains the launch file to start the ROS master and take care of bringing up the impedance controller modules, or Gazebo for simulation;
+- [`scripts`](https://github.com/itbellix/baton-robotic-rehab/tree/main/scripts) contains the Python scripts specific to run the various modules of `BATON` and reproduce our figures
 
 - [`Musculoskeletal Models`](<https://github.com/itbellix/baton-robotic-rehab/tree/main/Musculoskeletal Models>): this folder contains the OpenSim models that we used with `BATON`. In particular, a reduced-order version of the [`thoracoscapular shoulder model`](https://simtk.org/projects/scapulothoracic) is considered, capturing the mobility of the glenohumeral joint and the musculo-tendon units spanning the joint.
 
@@ -65,25 +72,31 @@ Further explanations are provided inside each folder.
 
 
 ## Brief guide to our code
-In order to run our code, you will need 3 different terminals (let's call them _terminal-1_, _terminal-2_ and _terminal-3_). On all of them, navigate to your local version of this repository, and source your ROS distribution, and the `iiwa-ros` (as `$ $PATH-to-iiwa$/iiwa_ros/devel/setup.bash`). Then, assuming that you are running things in simulation:
-- on _terminal-1_: run `roslaunch Code/launch/controller.launch simulation:=true`
-- on _terminal-2_: run `python Code/Python/robot_control.py --simulation=true`
-on _terminal-2_: 
-  1. activate the OpenSimAD Conda environment
-  2. run `python Code/Python/TO_main.py --simulation=true`
+In order to run our code, you will need 4 different terminals (I choose to keep things separate, but a ROS package + launchfile would be cleaner). 
+On all of them, navigate to your local version of this repository, and source your ROS distribution, and the catkin workspace containing `iiwa-impedance-control`. Then, assuming that you are running things in simulation:
+- on _terminal-1_: run `roslaunch Code/launch/bringup.launch simulation:=true`
+
+- then, on the other terminals, activate a virtual environment created on the basis of the [requirements.txt](https://github.com/itbellix/baton-robotic-rehab/blob/main/requirements.txt), and then:
+  - on _terminal-2_: run `python Code/scripts/robot_control.py --simulation=true`
+  - on _terminal-3_: run `python Code/scripts/TO_main.py --simulation=true`
+  - on _terminal-3_: run `python estimate_muscle_activation.py --simulation=true`
+
 
 If everything was installed correctly, you will see the Gazebo environment with the Kuka robot, and you should be prompted with a selection menu as below:
 
 <img src="Media/selection_menu.png" height="150" />
 
 Then, you can input `a` so that the robot moves to the starting position for the therapy.
-Once the position has been reached, you will see a strain map being brought up on the screen, and you will be able to input `s` so that the simulated experiment can start. By default, experiment 1 will be executed (where we assume position-dependent strains in the rotator cuff tendons).
+Once the position has been reached, you will see a strain map being brought up on the screen, and you will be able to input `s` so that the simulated experiment can start. By default, experiment 1 will be executed (where we assume position-dependent strains in the rotator cuff tendons). This can be changed in `scripts/experimental_parameters.py`.
 
 Overall, the windows that you will see should look like, displaying the generation of rehabilitation trajectories that minimize the strain on the rotator cuff tendons:
 
 <img src="Media/display_baton_sim.png" height="200" />
 
 ### Trouble-shooting
+- **Slow execution**: note that running everything on one machine can be quite slow. For this, in our experiments we employed an external workstation to run the robot controller (_terminal-1_ above), and to run a `rqt` GUI for visualization of contact wrenches and estimated muscle activations. Then, a normal laptop was used to run the rest of the scripts. Communication between the two machines and the robot was established with a Netgear switch.
+
+
 If you encounter any troubles or issues with running the code contained in this repository, feel free to open an issue and report it. We will do our best to help you!
 
 ## License
@@ -96,4 +109,4 @@ Prof. Dr. Ir. Fred van Keulen, Dean of Faculty of Mechanical, Maritime and Mater
 ```
 
 ## Contributors
-Italo Belli
+Italo Belli, Florian van Melis
