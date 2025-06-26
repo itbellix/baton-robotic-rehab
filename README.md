@@ -79,7 +79,7 @@ On all of them, navigate to your local version of this repository, and source yo
 - then, on the other terminals, activate a virtual environment created on the basis of the [requirements.txt](https://github.com/itbellix/baton-robotic-rehab/blob/main/requirements.txt), and then:
   - on _terminal-2_: run `python Code/scripts/robot_control.py --simulation=true`
   - on _terminal-3_: run `python Code/scripts/TO_main.py --simulation=true`
-  - on _terminal-3_: run `python estimate_muscle_activation.py --simulation=true`
+  - on _terminal-4_: run `python estimate_muscle_activation.py --simulation=true`
 
 
 If everything was installed correctly, you will see the Gazebo environment with the Kuka robot, and you should be prompted with a selection menu as below:
