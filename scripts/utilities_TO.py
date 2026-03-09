@@ -1201,7 +1201,7 @@ class nlps_module():
         # set the values of the parameters
         self.opti.set_value(init_state, self.x_0)       # this can be changed at runtime
         self.opti.set_value(desired_state, self.goal)   # this can be changed at runtime
-        self.opti.set_value(phi_prm, 0)
+        self.opti.set_value(phi_prm, self.x_0[4])       # this can be changed at runtime
         self.opti.set_value(phi_dot_prm, 0)
 
         if self.num_gaussians>0:
@@ -1411,7 +1411,7 @@ class nlps_module():
         # set the values of the parameters
         self.opti.set_value(init_state, self.x_0)       # this can be changed at runtime
         self.opti.set_value(desired_state, self.goal)   # this can be changed at runtime
-        self.opti.set_value(phi_prm, 0)
+        self.opti.set_value(phi_prm, self.x_0[4])       # this can be changed at runtime
         self.opti.set_value(phi_dot_prm, 0)
 
         if self.num_gaussians>0:
