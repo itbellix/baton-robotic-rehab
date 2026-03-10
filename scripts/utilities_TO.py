@@ -1296,7 +1296,7 @@ class nlps_module():
 
         #  "Lift" initial conditions
         Xk = self.opti.variable(self.dim_x)
-        init_state = self.opti.parameter(self.dim_x)     # parametrize initial condition
+        init_state = self.opti.parameter(self.dim_x)     # parametrize initial condition [theta, theta_dot, psi, pis_dot, phi, phi_dot]
         self.params_list.append(init_state)              # add the parameter to the list of parameters for the NLP
         self.opti.subject_to(Xk==init_state)
 
@@ -1379,6 +1379,7 @@ class nlps_module():
 
             # continuity constraint
             self.opti.subject_to(Xk_end==Xk)
+            self.opti.subject_to(Xk[4]==phi_prm)           # constraint to keep phi constant along the movement (representing here the axial rotation angle)
 
         if self.num_gaussians>0:
             # record the strain level at the final step
