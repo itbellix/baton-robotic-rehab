@@ -1,6 +1,6 @@
 """
 Script to analyze the data collected in a rosbag during the real robot experiments and varying activation.
-This script produces the results that I aggregated in Fig. 9 of the paper.
+Strain map for SSPA muscle navigated by ISI activation.
 """
 
 import os
@@ -11,6 +11,9 @@ import rosbag
 from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
 
 num_params = 6
 def gaussian_2d(x, y, amplitude, x0, y0, sigma_x, sigma_y, offset):
@@ -77,21 +80,57 @@ def generate_approximated_strainmap(file_strainmaps, ar_value, act_value = 0):
     return fit
 
 
+def colored_line(ax, x, y, c, cmap, norm, linestyle='solid', linewidth=2.5, label=None):
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+    lc = LineCollection(segments, cmap=cmap, norm=norm)
+    lc.set_array(c[:-1])
+    lc.set_linewidth(linewidth)
+    lc.set_linestyle(linestyle)
+
+    ax.add_collection(lc)
+
+    # Optional legend entry
+    if label is not None:
+        ax.plot([], [], linestyle=linestyle,
+                color=cmap(norm(np.max(c))),
+                label=label)
+
+    return lc
+
+
 
 def main():
     # define the required paths
     code_path = os.path.dirname(os.path.realpath(__file__))     # getting path to where this script resides
     path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
-    path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags', 'experiment_2')
-    bag_file_name = 'new_video_3.bag'       # for experiment without activation: bag_file_name = 'new_video_1.bag'
-                                            #       init_time = xyz_curr[int(xyz_curr.shape[0]/100*17.5), -1]
-                                            #       end_time = xyz_curr[int(xyz_curr.shape[0]/100*22.5), -1] - init_time
-                                            #
-                                            # for experiment with activation: bag_file_name = 'new_video_3.bag'
-                                            #       init_time = xyz_curr[int(xyz_curr.shape[0]/100*79), -1]
-                                            #        end_time = xyz_curr[int(xyz_curr.shape[0]/100*87), -1] - init_time
+    path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags', 'experiment_10')
 
+    # define initial and final times in percentage of the overall duration
+    time_0_percent = 0
+    time_final_percent = 99
 
+    # select the appropriate bag file depending on the subject and trial considered
+    subject = 1 # available 1
+    trial = 7   # available 1, 2, 3, 4, 5, 6, 7 (subject 1)
+                # good are trial 1, 3 (only first trajectory), 4?, 5, 6, 7
+
+    if subject==1:
+        if trial==1:
+            bag_file_name = 'exp10_stijn_1.bag'
+        elif trial==2:
+            bag_file_name = 'exp10_stijn_2.bag'
+        elif trial==3:
+            bag_file_name = 'exp10_stijn_3.bag'
+        elif trial==4:
+            bag_file_name = 'exp10_stijn_4.bag'
+        elif trial==5:
+            bag_file_name = 'exp10_stijn_5.bag'
+        elif trial==6:
+            bag_file_name = 'exp10_stijn_6.bag'
+        elif trial==7:
+            bag_file_name = 'exp10_stijn_7.bag'
 
     # load the strainmap dictionary used in the experiment
     # file_strainmaps = '/home/itbellix/Desktop/GitHub/PTbot_official/Personal_Results/Strains/Passive/AllMuscles/params_strainmaps_num_Gauss_3/params_strainmaps_num_Gauss_3.pkl' 
@@ -186,7 +225,6 @@ def main():
         print('Extracting muscle activation')
         num_muscles = 22
         index_muscle = 11       # 11 for infraspinatus inferior (ISI), 18 for supraspinatus anterior (SSPA)
-        index_muscle_2 = 18       # 11 for infraspinatus inferior (ISI), 18 for supraspinatus anterior (SSPA)
         muscle_activation_max = None
         muscle_activation_selected = None
         muscle_activation_selected_2 = None
@@ -195,19 +233,17 @@ def main():
             if muscle_activation_max is None:
                 muscle_activation_max = np.hstack((np.max(msg.data[0:num_muscles]), time_curr))
                 muscle_activation_selected = np.hstack((msg.data[index_muscle], time_curr))
-                muscle_activation_selected_2 = np.hstack((msg.data[index_muscle_2], time_curr))
             else:
                 muscle_activation_max = np.vstack((muscle_activation_max, np.hstack((np.max(msg.data[0:num_muscles]), time_curr))))
                 muscle_activation_selected = np.vstack((muscle_activation_selected, np.hstack((msg.data[index_muscle], time_curr))))
-                muscle_activation_selected_2 = np.vstack((muscle_activation_selected_2, np.hstack((msg.data[index_muscle_2], time_curr))))
 
     # reshaping the optimal trajectories into 3D array
     optimal_trajectory = np.reshape(optimal_trajectory, (6, -1, optimal_trajectory.shape[1]), order='F')
 
     # Now, let's filter the data to retain only the interesting part of the experiment
     # (i.e., when the subject is wearing the brace properly and the robot is moving)
-    init_time = xyz_curr[int(xyz_curr.shape[0]/100*79), -1]         # identify initial timestep
-    end_time = xyz_curr[int(xyz_curr.shape[0]/100*87), -1] - init_time # identify final timestep
+    init_time = xyz_curr[int(xyz_curr.shape[0]/100*time_0_percent), -1]         # identify initial timestep
+    end_time = xyz_curr[int(xyz_curr.shape[0]/100*time_final_percent), -1] - init_time # identify final timestep
 
     estimated_shoulder_state[:,-1] = estimated_shoulder_state[:,-1] - init_time   # center time values starting at initial time
     xyz_curr[:,-1] = xyz_curr[:,-1] - init_time
@@ -222,7 +258,6 @@ def main():
     if muscle_activation_max is not None:
         muscle_activation_max[:,-1] = muscle_activation_max[:,-1] - init_time
         muscle_activation_selected[:,-1] = muscle_activation_selected[:,-1] - init_time
-        muscle_activation_selected_2[:,-1] = muscle_activation_selected_2[:,-1] - init_time
 
     estimated_shoulder_state = estimated_shoulder_state[(estimated_shoulder_state[:,-1]>0) & (estimated_shoulder_state[:,-1]<end_time)]
     xyz_curr = xyz_curr[(xyz_curr[:,-1]>0) & (xyz_curr[:,-1]<end_time)]    # retain data after initial time
@@ -235,7 +270,6 @@ def main():
     if muscle_activation_max is not None:
         muscle_activation_max = muscle_activation_max[(muscle_activation_max[:,-1]>0) & (muscle_activation_max[:,-1]<end_time)]
         muscle_activation_selected = muscle_activation_selected[(muscle_activation_selected[:,-1]>0) & (muscle_activation_selected[:,-1]<end_time)]
-        muscle_activation_selected_2 = muscle_activation_selected_2[(muscle_activation_selected_2[:,-1]>0) & (muscle_activation_selected_2[:,-1]<end_time)]
 
     if interaction_torque_x is not None:
         interaction_torque_x = interaction_torque_x[(interaction_torque_x[:,-1]>0) & (interaction_torque_x[:,-1]<end_time)]
@@ -253,18 +287,20 @@ def main():
     
 
     # visualize 2D trajectory on strainmap
+    start = np.array([60, 60])
+    goal_1 = np.array([45, 95])
     fig = plt.figure()
     ax = fig.add_subplot()
     cb = ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=strainmap.min(), vmax=max_strain)
     ax.plot(np.rad2deg(estimated_shoulder_state[:, 0]), np.rad2deg(estimated_shoulder_state[:, 2]))
-    ax.scatter(np.array([45]), np.array([95]), label = 'goal', c = 'green', edgecolors='black')
-    ax.scatter(np.array([60]), np.array([60]), label = 'start', c='red', edgecolors='black')
-    ax.set_ylim(45, 110)
-    ax.set_xlim(30, 80)
+    ax.scatter(start[0], start[1], label = 'goal', c = 'green', edgecolors='black')
+    ax.scatter(goal_1[0], goal_1[1], label = 'start', c='red', edgecolors='black')
+    ax.set_ylim(45, 105)
+    ax.set_xlim(35, 80)
     ax.set_xlabel("Plane of Elevation [°]")
     ax.set_ylabel("Shoulder Elevation [°]")
     ax.legend()
-    ax.set_title("EXP2: Trajectory on strainmap (0 activation)")
+    ax.set_title("EXP10: Trajectory on strainmap (0 activation)")
     fig.colorbar(cb)
 
     # visualize individual human DoF
@@ -290,7 +326,7 @@ def main():
     ax.set_ylabel("Estimated AR_dot [°/s]")
     ax.set_xlabel("Time [@ 10Hz]")
     ax.legend()
-    fig.suptitle("EXP2: individual shoulder angles (with human)")
+    fig.suptitle("EXP10: individual shoulder angles (with human)")
 
     # visualize 3D trajectory for the EE position
     fig = plt.figure()
@@ -320,7 +356,7 @@ def main():
         ax.plot(z_uncompensated[:,-1], z_uncompensated[:,0], label = 'z_des', color='cornflowerblue', linestyle='dashed')
     ax.set_ylabel('[m]')
     ax.legend()
-    fig.suptitle("EXP2: EE cartesian position")
+    fig.suptitle("EXP10: EE cartesian position")
 
     # visualize orientation mismatch between commanded and executed motion
     # Calculate the absolute differences between each timestamp in angvec_cmd and angvec_curr
@@ -347,7 +383,7 @@ def main():
     ax.set_ylabel('[deg]')
     ax.set_xlabel('time [s]')
     ax.legend()
-    fig.suptitle("EXP2: EE orientation")
+    fig.suptitle("EXP10: EE orientation")
 
     # visualize magnitude of interaction force
     if interaction_torque_x is not None:
@@ -358,18 +394,79 @@ def main():
         ax.set_title('Interaction torque (x)')
 
     if muscle_activation_selected is not None:
-        fig = plt.figure()
-        ax = fig.add_subplot()
+        fig, ax = plt.subplots(figsize=(16, 4))
         ax.plot(muscle_activation_selected[:,-1], muscle_activation_selected[:,0], label='ISI')
         if muscle_activation_selected_2 is not None:
             ax.plot(muscle_activation_selected_2[:,-1], muscle_activation_selected_2[:,0], label='SSPA')
-            ax.legend()
+        ax.legend()
         ax.set_ylabel('activation')
-        ax.set_title('Comparison of muscle activation for ISI and SSPA')
+        ax.set_title('Muscle activation')
 
         # print to screen the average maximum muscle activation
         print('Average maximum activation: ', np.mean(muscle_activation_max[:, 0]))
-    
+
+        # now we want to plot plane of elevation and shoulder elevation over time, colored by the muscle activation of the selected muscle (ISI or SSPA)
+        norm = Normalize(vmin=muscle_activation_selected[:, 0].min(),vmax=muscle_activation_selected[:, 0].max())
+        red_cmap = LinearSegmentedColormap.from_list("dark_to_bright_red",["#4d0000", "#ff0000"])   # dark red → bright red
+        with_cmap = 0
+        fig, ax = plt.subplots(figsize=(16, 4))
+
+        # X/Y trajectory (adapt if needed)
+        time = estimated_shoulder_state[:, -1]
+        pe = np.rad2deg(estimated_shoulder_state[:, 0])
+        se = np.rad2deg(estimated_shoulder_state[:, 2])
+
+        if with_cmap:
+            # --- Solid line (first trajectory) ---
+            lc1 = colored_line(
+                ax, time, pe, muscle_activation_selected[:, 0],
+                cmap=red_cmap,
+                norm=norm,
+                linestyle='solid',
+                label='PE'
+            )
+
+            # --- Dashed line (second trajectory) ---
+            lc2 = colored_line(
+                ax, time, se, muscle_activation_selected[:, 0],
+                cmap=red_cmap,
+                norm=norm,
+                linestyle='dashed',
+                label='SE'
+            )
+
+            # Custom legend
+            legend_items = [
+                Line2D([0], [0], color="#ff0000", lw=2.5, linestyle='solid', label='PE'),
+                Line2D([0], [0], color="#ff0000", lw=2.5, linestyle='dashed', label='SE')
+            ]
+
+        else:
+            ax.plot(time, pe, label='PE', color='black', linestyle='solid')
+            ax.plot(time, se, label='SE', color='black', linestyle='dashed')
+            legend_items = [
+                Line2D([0], [0], color='black', lw=2.5, linestyle='solid', label='PE'),
+                Line2D([0], [0], color='black', lw=2.5, linestyle='dashed', label='SE')
+            ]
+
+        # Markers (optional)
+        ax.scatter(0, start[0], label='goal_PE', c='green', edgecolors='black', zorder=5)
+        ax.scatter(0, start[1], label='goal_SE', c='green', edgecolors='black', zorder=5)
+        ax.scatter(0, goal_1[0], label='start', c='red', edgecolors='black', zorder=5)
+        ax.scatter(0, goal_1[1], label='start', c='red', edgecolors='black', zorder=5)
+
+        ax.set_xlabel("Plane of Elevation [°]")
+        ax.set_ylabel("Shoulder Elevation [°]")
+
+        # Activation colorbar
+        if with_cmap:
+            sm = plt.cm.ScalarMappable(cmap=red_cmap, norm=norm)
+            sm.set_array([])
+            fig.colorbar(sm, ax=ax, label="Muscle activation")
+
+        # Custom legend
+        ax.legend(handles=legend_items)
+                    
     plt.show(block=True)
 
 
