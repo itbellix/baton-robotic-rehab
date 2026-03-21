@@ -257,8 +257,8 @@ def main():
     visualize_projected_trajectories_on_straimaps = False
 
     # define initial and final times in percentage of the overall duration
-    time_0_percent = 0
-    time_final_percent = 99
+    time_0_percent = 2
+    time_final_percent = 53
 
     bag_file_name = 'BATON_simulated_trajectories_0_activation.bag' # containing BATON trajectories with 0 activation
 
@@ -358,10 +358,17 @@ def main():
     xyz_curr = xyz_curr[(xyz_curr[:,-1]>0) & (xyz_curr[:,-1]<end_time)]    # retain data after initial time
     xyz_cmd = xyz_cmd[(xyz_cmd[:,-1]>0) & (xyz_cmd[:,-1]<end_time)]
 
+    # downsample the baseline trajectory to 100 points, to compare it later with the experimental ones
+    baseline_trajectory_pese = estimated_shoulder_state[:, [0, 2]]   # extract PE and SE columns
+    num_points_traj = baseline_trajectory_pese.shape[0]
+    step_downsample = max(1, num_points_traj // 100)
+    baseline_trajectory_pese_downsampled = baseline_trajectory_pese[::step_downsample]
+
     # initialize results dictionary for the simulation
     results_multisubject_simulation = {}
 
-    # now we loop over all of the trials of the multisubject experiment, to select the right strainmap and evaluate the 0-activation trajectory
+    # now we loop over all of the trials of the multisubject experiment, to select the right strainmap and evaluate the 0-activation trajectory. Also, we process the corresponding trajectories to downsample them and
+    # compute the average experimental trajectory to show on the strainmap corresponding to the mean of the maximum activations across subjects.
     for participant in participants_to_consider:
         results_multisubject_simulation[participant] = {}   # allocate cell for participant in results dictionary
 
@@ -414,6 +421,28 @@ def main():
             min_strain_on_max_act1 = np.round(np.min(strain_along_traj_extreme1), 2)
             min_strain_on_max_act2 = np.round(np.min(strain_along_traj_extreme2), 2)
             min_strain_on_max_act = min(min_strain_on_max_act1, min_strain_on_max_act2)
+
+            # downsample the trajectory to show it on the strainmap, after averaging it with all the other trajectories of the same participant.
+            # We want the downsampled trajectory to have exactly 100 points, to make sure that the average trajectory across participants is computed correctly.
+            # original trajectory in degrees
+            # use the experimental trajectory for this participant/trial
+            traj = results_multisubject_experiment[participant][trial]["trajectory"]
+
+            # if stored in radians, convert to degrees
+            traj_deg = np.rad2deg(traj[:, [0, 2, 4]])   # PE, SE, AR
+            # resample to exactly 100 points
+            n_target = 100
+            n_original = traj_deg.shape[0]
+
+            old_idx = np.linspace(0, 1, n_original)
+            new_idx = np.linspace(0, 1, n_target)
+
+            downsampled_traj = np.column_stack([
+                np.interp(new_idx, old_idx, traj_deg[:, 0]),
+                np.interp(new_idx, old_idx, traj_deg[:, 1]),
+                np.interp(new_idx, old_idx, traj_deg[:, 2]),
+            ])
+
             
             # store results with same key structure
             results_multisubject_simulation[participant][trial] = {
@@ -424,7 +453,11 @@ def main():
                     "avg_strain": None,
                     "max_strain": max_strain_on_max_act,
                     "min_strain": min_strain_on_max_act
-                },}
+                },
+            }   
+
+            # also replace the trajectory in the experiment results with the downsampled one, to show it on the strainmap
+            results_multisubject_experiment[participant][trial]["trajectory"] = downsampled_traj
 
             if visualize_projected_trajectories_on_straimaps:
                 fig, ax = plt.subplots(figsize=(8, 6))
@@ -518,14 +551,17 @@ def main():
     group_exp_min_means = []
     group_sim_min_means = []
     group_reduction_min = []
+    group_trajectories = []
 
     for participant in participants_to_consider:
         exp_avg_strains = []
         exp_max_strains = []
         exp_min_strains = []
+        exp_max_activations = []
         sim_avg_strains = []
         sim_max_strains = []
         sim_min_strains = []
+        exp_trajectories = []
 
         for trial in trials_to_consider[participant]:
             exp_avg_strains.append(results_multisubject_experiment[participant][trial]["avg_strain"])
@@ -534,6 +570,9 @@ def main():
             sim_avg_strains.append(results_multisubject_simulation[participant][trial]["avg_activation_strainmap"]["avg_strain"])
             sim_max_strains.append(results_multisubject_simulation[participant][trial]["max_activation_strainmap"]["max_strain"])
             sim_min_strains.append(results_multisubject_simulation[participant][trial]["max_activation_strainmap"]["min_strain"])
+            exp_trajectories.append(results_multisubject_experiment[participant][trial]["trajectory"])
+            exp_max_activations.append(results_multisubject_experiment[participant][trial]["max_activation"])
+            
 
         # Skip participants with no trials
         if len(exp_avg_strains) == 0:
@@ -546,6 +585,8 @@ def main():
         sim_avg_strains = np.array(sim_avg_strains)
         sim_max_strains = np.array(sim_max_strains)
         sim_min_strains = np.array(sim_min_strains)
+        exp_trajectories = np.array(exp_trajectories)
+        exp_max_activations = np.array(exp_max_activations)
 
         # ----- per-participant means -----
         mean_exp_avg_strain = np.mean(exp_avg_strains)
@@ -554,6 +595,8 @@ def main():
         mean_sim_avg_strain = np.mean(sim_avg_strains)
         mean_sim_max_strain = np.mean(sim_max_strains)
         mean_sim_min_strain = np.mean(sim_min_strains)
+        mean_traj = np.mean(np.stack(exp_trajectories, axis=0), axis=0)
+        mean_exp_max_activation = np.mean(exp_max_activations)
 
         # ----- per-participant std (across trials) -----
         std_exp_avg_strain = np.std(exp_avg_strains, ddof=1)
@@ -592,6 +635,8 @@ def main():
         group_exp_min_means.append(mean_exp_min_strain)
         group_sim_min_means.append(mean_sim_min_strain)
         group_reduction_min.append(reduction_min_percent)
+
+        group_trajectories.append(mean_traj)
         # ----- print per-participant -----
         print(f"Participant {participant}:")
         print(
@@ -616,6 +661,26 @@ def main():
             f"Reduction: {reduction_min_percent:.2f}%"
         )
 
+        # visualize the average trajectory of the participant on the strainmap corresponding to the average activation, to show how it performs in terms of strain values. 
+        # compare it with the baseline trajectory, on the strainmap corresponding to the mean of the maximum activations for this subject.
+        strainmap_avg, pe_datapoints, se_datapoints = generate_approximated_strainmap(file_strainmaps,
+                                                                                      np.max(mean_traj[:, 2]), 
+                                                                                      mean_exp_max_activation)
+        fig, ax = plt.subplots(figsize=(8, 6))
+        cb = ax.imshow(strainmap_avg.T, 
+                    origin='lower', 
+                    cmap='hot', 
+                    extent=[pe_datapoints[0], pe_datapoints[-1], se_datapoints[0], se_datapoints[-1]], 
+                    vmin=strainmap_avg.min(), 
+                    vmax=strainmap_avg.max())
+        ax.plot(mean_traj[:,0], mean_traj[:,1], linewidth=2, label='Avg Trajectory')
+        ax.plot(np.rad2deg(baseline_trajectory_pese_downsampled[:, 0]), np.rad2deg(baseline_trajectory_pese_downsampled[:, 1]), linewidth=2, label='Baseline Trajectory')
+        ax.set_xlabel('Plane of elevation [deg]')
+        ax.set_ylabel('Shoulder elevation [deg]')
+        ax.set_title(f'Participant {participant}, activation {results_multisubject_experiment[participant][trial]["max_activation"]:.2f}')
+        ax.legend()
+        plt.colorbar(cb, ax=ax, label='Strain')
+
 
     # ============================================================
     #                GROUP-LEVEL RESULTS
@@ -634,6 +699,8 @@ def main():
         group_exp_min_means = np.array(group_exp_min_means)
         group_sim_min_means = np.array(group_sim_min_means)
         group_reduction_min = np.array(group_reduction_min)
+
+        group_trajectories = np.array(group_trajectories)
 
         print("\n===== AVERAGE ACROSS PARTICIPANTS =====")
 
@@ -681,6 +748,93 @@ def main():
             f"9. Mean reduction (minimum strain): "
             f"{np.mean(group_reduction_min):.2f}%"
         )
+
+        # plot the average trajectory across participants
+        mean_group_traj = np.mean(group_trajectories, axis=0)              # (100, 3)
+        std_group_traj = np.std(group_trajectories, axis=0, ddof=1)
+
+        # use only PE-SE for 2D plotting
+        mean_xy = mean_group_traj[:, :2]                                   # (100, 2)
+        all_xy = group_trajectories[:, :, :2]                              # (Nsubj, 100, 2)
+
+        # tangent of mean curve
+        dxy = np.gradient(mean_xy, axis=0)                                 # (100, 2)
+        tangent_norm = np.linalg.norm(dxy, axis=1, keepdims=True)
+        tangent_norm[tangent_norm == 0] = 1.0
+        tangent = dxy / tangent_norm
+
+        # unit normal vector
+        normal = np.column_stack((-tangent[:, 1], tangent[:, 0]))          # (100, 2)
+
+        # project subject deviations onto the local normal direction
+        diff = all_xy - mean_xy[None, :, :]                                # (Nsubj, 100, 2)
+        normal_dist = np.sum(diff * normal[None, :, :], axis=2)            # (Nsubj, 100)
+
+        # std of the normal deviation at each sample
+        std_normal = np.std(normal_dist, axis=0, ddof=1)                   # (100,)
+
+        # upper/lower boundary curves
+        upper_xy = mean_xy + normal * std_normal[:, None]
+        lower_xy = mean_xy - normal * std_normal[:, None]
+
+        strainmap_total, pe_datapoints, se_datapoints = generate_approximated_strainmap(file_strainmaps, np.deg2rad(np.max(mean_group_traj[:, 2])), mean_exp_max_activation)
+        
+        fig, ax = plt.subplots(figsize=(8, 6))
+        cb = ax.imshow(
+            strainmap_total.T,
+            origin='lower',
+            cmap='hot',
+            extent=[pe_datapoints[0], pe_datapoints[-1], se_datapoints[0], se_datapoints[-1]],
+            vmin=strainmap_total.min(),
+            vmax=2.0
+        )
+
+        # shaded 2D band
+        band_x = np.concatenate([upper_xy[:, 0], lower_xy[::-1, 0]])
+        band_y = np.concatenate([upper_xy[:, 1], lower_xy[::-1, 1]])
+        ax.fill(band_x, band_y, color='blue', alpha=0.2, label='±1 SD')
+
+        # boundary lines
+        ax.plot(upper_xy[:, 0], upper_xy[:, 1], linewidth=1.5, color='blue', linestyle=':')
+        ax.plot(lower_xy[:, 0], lower_xy[:, 1], linewidth=1.5, color='blue', linestyle=':')
+
+        # optional: individual trajectories
+        for i in range(group_trajectories.shape[0]):
+            ax.plot(
+                group_trajectories[i, :, 0],
+                group_trajectories[i, :, 1],
+                alpha=0.25,
+                linewidth=1,
+                color='gray'
+            )
+
+        # mean trajectory
+        ax.plot(
+            mean_group_traj[:, 0],
+            mean_group_traj[:, 1],
+            linewidth=3,
+            label='Mean trajectory',
+            color='blue'
+        )
+
+        # baseline
+        ax.plot(
+            np.rad2deg(baseline_trajectory_pese_downsampled[:, 0]),
+            np.rad2deg(baseline_trajectory_pese_downsampled[:, 1]),
+            linewidth=2,
+            label='Baseline trajectory',
+            color='black',
+            linestyle='--'
+        )
+
+        ax.set_xlabel('Plane of elevation [deg]')
+        ax.set_ylabel('Shoulder elevation [deg]')
+        ax.set_title('Group mean trajectory ± 1 SD')
+        ax.legend()
+        ax.set_ylim(55, 100)
+        ax.set_xlim(40, 70)
+        plt.colorbar(cb, ax=ax, label='Strain')
+        plt.show()
 
 
 if __name__ == '__main__':
