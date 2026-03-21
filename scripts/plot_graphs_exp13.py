@@ -1,6 +1,7 @@
 """
-Script to analyze the data collected in a rosbag during the real robot experiments and varying activation.
-This script produces the results that I aggregated in Fig. 9 of the paper.
+Script to analyze the performance of BATON on multi-subject trial, comparing it to strain values that subject could have
+encountered if BATON did not account for their experimental activations and AR values.
+This script produces the results that I aggregated in Table 2 of the paper.
 """
 
 import os
@@ -149,130 +150,100 @@ def colored_line(ax, x, y, c, cmap, norm, linestyle='solid', linewidth=2.5, labe
 
     return lc
 
-def load_experiment_summary(filepath, participants_to_consider=None, trials_to_consider=None, short_rep_flag=None):
+def load_experiment_summary(results_folder,
+                            participants_to_consider=None,
+                            trials_to_consider=None):
     """
-    Load experiment summary from a text file.
+    Load multisubject experiment results from .npz files.
 
-    Parameters
-    ----------
-    filepath : str
-        Path to the summary .txt file.
-    participants_to_consider : list[int] or None
-        Participants to keep. If None, all participants found in the file are loaded.
-    trials_to_consider : dict[int, list[int]] or None
-        Dictionary mapping participant ID -> list of trials to keep.
-        If None, all trials found in the file are loaded.
+    Expected file naming convention:
+        exp12_sX_tY.npz
+    where:
+        X = participant number
+        Y = trial number
+
+    Each file must contain:
+        - trajectory
+        - optimal_strain
+        - muscle_activation
 
     Returns
     -------
     results : dict
-        Nested dictionary:
-        results[participant_id][trial_id] = {
-            "max_strain": float,
-            "avg_strain": float,
-            "avg_activation": float,
-            "max_activation": float,
-        }
+        Nested dictionary such that:
+        results[participant][trial]["avg_activation"]
+        results[participant][trial]["max_activation"]
+        results[participant][trial]["min_activation"]
+        results[participant][trial]["avg_strain"]
+        results[participant][trial]["max_strain"]
+        results[participant][trial]["min_strain"]
+        results[participant][trial]["trajectory"]
 
     Raises
     ------
     ValueError
-        If a requested participant or requested trial is not found in the file.
+        If requested participants/trials are not provided consistently.
+    FileNotFoundError
+        If a requested .npz file is missing.
+    KeyError
+        If a required variable is missing inside a .npz file.
     """
 
-    # Normalize inputs
-    if participants_to_consider is not None:
-        participants_to_consider = set(participants_to_consider)
+    if participants_to_consider is None:
+        raise ValueError("participants_to_consider must be provided.")
 
     if trials_to_consider is None:
-        trials_to_consider = {}
+        raise ValueError("trials_to_consider must be provided.")
 
     results = {}
 
-    current_participant = None
-    current_trial = None
-
-    with open(filepath, "r", encoding="utf-8") as f:
-        for raw_line in f:
-            line = raw_line.strip()
-
-            if not line:
-                continue
-
-            # Match participant line
-            match_participant = re.match(r"Participant\s+(\d+)", line)
-            if match_participant:
-                participant_id = int(match_participant.group(1))
-                current_trial = None
-
-                # Skip participant if not requested
-                if participants_to_consider is not None and participant_id not in participants_to_consider:
-                    current_participant = None
-                    continue
-
-                current_participant = participant_id
-                if current_participant not in results:
-                    results[current_participant] = {}
-                continue
-
-            # Match trial line
-            if short_rep_flag:
-                match_trial = re.match(r"trial_short:\s*(\d+)", line)
-            else:
-                match_trial = re.match(r"trial_full:\s*(\d+)", line)
-
-            if match_trial and current_participant is not None:
-                trial_id = int(match_trial.group(1))
-
-                # Skip trial if not requested for this participant
-                requested_trials = trials_to_consider.get(current_participant, None)
-                if requested_trials is not None and trial_id not in requested_trials:
-                    current_trial = None
-                    continue
-
-                current_trial = trial_id
-                results[current_participant][current_trial] = {}
-                continue
-
-            # Parse values only if current participant/trial are active
-            if current_participant is not None and current_trial is not None:
-                if "Maximum optimal strain during the experiment:" in line:
-                    results[current_participant][current_trial]["max_strain"] = np.round(float(line.split(":")[-1].strip()), 2)
-
-                elif "Average optimal strain during the experiment:" in line:
-                    results[current_participant][current_trial]["avg_strain"] = np.round(float(line.split(":")[-1].strip()), 2)
-
-                elif "Average activation:" in line:
-                    results[current_participant][current_trial]["avg_activation"] = np.round(float(line.split(":")[-1].strip()), 2)
-
-                elif "Maximum activation:" in line:
-                    results[current_participant][current_trial]["max_activation"] = np.round(float(line.split(":")[-1].strip()), 2)
-
-    # -------------------------
-    # Validation of requirements
-    # -------------------------
-    if participants_to_consider is not None:
-        missing_participants = sorted(participants_to_consider - set(results.keys()))
-        if missing_participants:
+    for participant in participants_to_consider:
+        if participant not in trials_to_consider:
             raise ValueError(
-                f"The following requested participants were not found in the file: {missing_participants}"
+                f"Participant {participant} is listed in participants_to_consider "
+                f"but has no entry in trials_to_consider."
             )
 
-    for participant_id, requested_trials in trials_to_consider.items():
-        if participants_to_consider is not None and participant_id not in participants_to_consider:
-            continue
+        results[participant] = {}
 
-        if participant_id not in results:
-            raise ValueError(
-                f"Participant {participant_id} was requested in trials_to_consider but was not found in the file."
-            )
+        for trial in trials_to_consider[participant]:
+            filename = f"exp12_s{participant}_t{trial}.npz"
+            filepath = os.path.join(results_folder, filename)
 
-        found_trials = set(results[participant_id].keys())
-        missing_trials = sorted(set(requested_trials) - found_trials)
-        if missing_trials:
-            raise ValueError(
-                f"For participant {participant_id}, the following requested trials were not found in the file: {missing_trials}"
-            )
+            if not os.path.isfile(filepath):
+                raise FileNotFoundError(
+                    f"Required file not found for participant {participant}, "
+                    f"trial {trial}: {filepath}"
+                )
+
+            data = np.load(filepath, allow_pickle=True)
+
+            required_keys = ["trajectory", "optimal_strain", "muscle_activation"]
+            missing_keys = [key for key in required_keys if key not in data]
+            if missing_keys:
+                raise KeyError(
+                    f"File {filepath} is missing required keys: {missing_keys}"
+                )
+
+            trajectory = data["trajectory"]
+            optimal_strain = np.asarray(data["optimal_strain"]).squeeze()
+            muscle_activation = np.asarray(data["muscle_activation"]).squeeze()
+
+            # Safety checks
+            if optimal_strain.size == 0:
+                raise ValueError(f"'optimal_strain' is empty in file {filepath}")
+            if muscle_activation.size == 0:
+                raise ValueError(f"'muscle_activation' is empty in file {filepath}")
+
+            results[participant][trial] = {
+                "avg_activation": float(np.mean(muscle_activation[:,0])),   # muscle activation is first column, time is the second one
+                "max_activation": float(np.max(muscle_activation[:,0])),
+                "min_activation": float(np.min(muscle_activation[:,0])),
+                "avg_strain": float(np.mean(optimal_strain[:,0])),   # optimal strain is first column, time is the second one
+                "max_strain": float(np.max(optimal_strain[:,0])),
+                "min_strain": float(np.min(optimal_strain[:,0])),
+                "trajectory": trajectory
+            }
 
     return results
 
@@ -291,9 +262,9 @@ def main():
 
     bag_file_name = 'BATON_simulated_trajectories_0_activation.bag' # containing BATON trajectories with 0 activation
 
-    multi_participants_results_file = "experiment_12_summary.txt"
+    multi_participants_results_path = os.path.join(path_to_repo, 'Personal_Results', 'exp12_analysis')
 
-    participants_to_consider = [1, 2, 3, 4, 5, 6, 7, 8]
+    participants_to_consider = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     trials_to_consider = {
         1: [5, 6, 8],       # trial 7 had problems
@@ -303,20 +274,24 @@ def main():
         5: [4, 5, 6],
         6: [4, 5, 6],
         7: [5, 7 ,8],
-        8: [4, 5, 6]
+        8: [4, 5, 6],
+        9: [4, 5, 6],
+        10: [4, 2, 6]
     }
 
     short_rep_flag = True
-    approximated_ar = np.deg2rad(-6)
     
     # load the strainmap dictionary used in the experiment
     file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models', 'Strain Maps', 'Active', 'differentiable_strainmaps_SSPA.pkl')
 
     # load the results for the multisubject experiment, to be used to select the right strainmaps and evaluate BATON's 0-activation trajectory
-    results_multisubject_experiment = load_experiment_summary(multi_participants_results_file,
+    # The results are stored in a .npz file, named "exp12_sX_tY.npz", where X is the subject number and Y is the trial number. Each file contains:
+    # - trajectory
+    # - optimal_strain
+    # - muscle_activation
+    results_multisubject_experiment = load_experiment_summary(multi_participants_results_path,
                                                               participants_to_consider=participants_to_consider,
-                                                              trials_to_consider=trials_to_consider,
-                                                              short_rep_flag = short_rep_flag)
+                                                              trials_to_consider=trials_to_consider)
 
     # instantiate variables (they will be Mx4 matrices, where M is variable -number of data- and the last column is the timestamp)
     estimated_shoulder_state = None
@@ -391,25 +366,38 @@ def main():
         results_multisubject_simulation[participant] = {}   # allocate cell for participant in results dictionary
 
         for trial in trials_to_consider[participant]:
+            ar_min = results_multisubject_experiment[participant][trial]["trajectory"][:, 4].min()
+            ar_max = results_multisubject_experiment[participant][trial]["trajectory"][:, 4].max()
+            avg_ar = results_multisubject_experiment[participant][trial]["trajectory"][:, 4].mean()
+
             # load the strainmap corresponding to the average and maximum activation of the participant's trial
             strainmap_avg, pe_datapoints, se_datapoints = generate_approximated_strainmap(file_strainmaps, 
-                                                                                          approximated_ar, 
+                                                                                          avg_ar, 
                                                                                           results_multisubject_experiment[participant][trial]["avg_activation"])
-            strainmap_max, _, _ = generate_approximated_strainmap(file_strainmaps, 
-                                                                 approximated_ar, 
-                                                                 results_multisubject_experiment[participant][trial]["max_activation"])
+            strainmap_maxAct_minAR, _, _ = generate_approximated_strainmap(file_strainmaps,
+                                                                           ar_min, 
+                                                                           results_multisubject_experiment[participant][trial]["max_activation"])
+            
+            strainmap_maxAct_maxAR, _, _ = generate_approximated_strainmap(file_strainmaps,
+                                                                           ar_max, 
+                                                                           results_multisubject_experiment[participant][trial]["max_activation"])
 
             # now we can evaluate the 0-activation trajectory on the TWO selected strainmap, to see how it performs in terms of strain values
             # (this will be done in the paper to show that the 0-activation trajectory is not good in terms of optimal strain, and that the strainmap can be used to select better trajectories for the patient)
-            pe_traj_deg, se_traj_deg, pe_idx, se_idx, strain_along_traj_avg = project_trajectory_onto_strainmap(
+            pe_traj_deg, se_traj_deg, pe_idx, se_idx, strain_along_traj_avg = project_trajectory_onto_strainmap(estimated_shoulder_state,
+                                                                                                                strainmap_avg,
+                                                                                                                pe_datapoints,
+                                                                                                                se_datapoints)
+            
+            pe_traj_deg_max, se_traj_deg_max, pe_idx_max, se_idx_max, strain_along_traj_extreme1 = project_trajectory_onto_strainmap(
                 estimated_shoulder_state,
-                strainmap_avg,
+                strainmap_maxAct_minAR,
                 pe_datapoints,
                 se_datapoints)
             
-            pe_traj_deg_max, se_traj_deg_max, pe_idx_max, se_idx_max, strain_along_traj_max = project_trajectory_onto_strainmap(
+            pe_traj_deg_max, se_traj_deg_max, pe_idx_max, se_idx_max, strain_along_traj_extreme2 = project_trajectory_onto_strainmap(
                 estimated_shoulder_state,
-                strainmap_max,
+                strainmap_maxAct_maxAR,
                 pe_datapoints,
                 se_datapoints)
             
@@ -417,8 +405,15 @@ def main():
             avg_strain_on_avg_act = np.round(np.mean(strain_along_traj_avg), 2)
             max_strain_on_avg_act = np.round(np.max(strain_along_traj_avg), 2)
 
-            avg_strain_on_max_act = np.round(np.mean(strain_along_traj_max), 2)
-            max_strain_on_max_act = np.round(np.max(strain_along_traj_max), 2)
+            # avg_strain_on_max_act = np.round(np.mean(strain_along_traj_max), 2)
+            max_strain_on_max_act1 = np.round(np.max(strain_along_traj_extreme1), 2)
+            max_strain_on_max_act2 = np.round(np.max(strain_along_traj_extreme2), 2)
+            max_strain_on_max_act = max(max_strain_on_max_act1, max_strain_on_max_act2)
+
+            # compute also minumum strain of the trajectory, in the worst case scenario of maximum activation and extreme values of AR
+            min_strain_on_max_act1 = np.round(np.min(strain_along_traj_extreme1), 2)
+            min_strain_on_max_act2 = np.round(np.min(strain_along_traj_extreme2), 2)
+            min_strain_on_max_act = min(min_strain_on_max_act1, min_strain_on_max_act2)
             
             # store results with same key structure
             results_multisubject_simulation[participant][trial] = {
@@ -426,8 +421,10 @@ def main():
                     "avg_strain": avg_strain_on_avg_act,
                     "max_strain": max_strain_on_avg_act,},
                 "max_activation_strainmap": {
-                    "avg_strain": avg_strain_on_max_act,
-                    "max_strain": max_strain_on_max_act,}}
+                    "avg_strain": None,
+                    "max_strain": max_strain_on_max_act,
+                    "min_strain": min_strain_on_max_act
+                },}
 
             if visualize_projected_trajectories_on_straimaps:
                 fig, ax = plt.subplots(figsize=(8, 6))
@@ -437,26 +434,40 @@ def main():
                             extent=[pe_datapoints[0], pe_datapoints[-1], se_datapoints[0], se_datapoints[-1]], 
                             vmin=strainmap_avg.min(), 
                             vmax=strainmap_avg.max())
-                ax.plot(pe_traj_deg, se_traj_deg, 'r-', linewidth=2, label='Trajectory')
+                ax.plot(pe_traj_deg, se_traj_deg, linewidth=2, label='Trajectory')
                 ax.set_xlabel('Plane of elevation [deg]')
                 ax.set_ylabel('Shoulder elevation [deg]')
-                ax.set_title(f'Participant {participant}, Trial {trial}, avg activation {results_multisubject_experiment[participant][trial]["avg_activation"]:.3f}')
+                ax.set_title(f'Participant {participant}, Trial {trial}, avg activation {results_multisubject_experiment[participant][trial]["avg_activation"]:.2f}')
                 ax.legend()
-                plt.colorbar(cb, ax=ax, label='Optimal strain')
+                plt.colorbar(cb, ax=ax, label='Baseline strain')
 
                 fig, ax = plt.subplots(figsize=(8, 6))
-                cb = ax.imshow(strainmap_max.T, 
+                cb = ax.imshow(strainmap_maxAct_maxAR.T, 
                             origin='lower', 
                             cmap='hot', 
                             extent=[pe_datapoints[0], pe_datapoints[-1], se_datapoints[0], se_datapoints[-1]], 
-                            vmin=strainmap_max.min(), 
-                            vmax=strainmap_max.max())
-                ax.plot(pe_traj_deg, se_traj_deg, 'r-', linewidth=2, label='Trajectory')
+                            vmin=strainmap_maxAct_maxAR.min(), 
+                            vmax=strainmap_maxAct_maxAR.max())
+                ax.plot(pe_traj_deg, se_traj_deg, linewidth=2, label='Trajectory')
                 ax.set_xlabel('Plane of elevation [deg]')
                 ax.set_ylabel('Shoulder elevation [deg]')
-                ax.set_title(f'Participant {participant}, Trial {trial}, max activation {results_multisubject_experiment[participant][trial]["max_activation"]:.3f}')
+                ax.set_title(f'Participant {participant}, Trial {trial}, max activation {results_multisubject_experiment[participant][trial]["max_activation"]:.2f}')
                 ax.legend()
-                plt.colorbar(cb, ax=ax, label='Optimal strain')
+                plt.colorbar(cb, ax=ax, label='Baseline strain')
+
+                fig, ax = plt.subplots(figsize=(8, 6))
+                cb = ax.imshow(strainmap_maxAct_minAR.T, 
+                            origin='lower', 
+                            cmap='hot', 
+                            extent=[pe_datapoints[0], pe_datapoints[-1], se_datapoints[0], se_datapoints[-1]], 
+                            vmin=strainmap_maxAct_minAR.min(), 
+                            vmax=strainmap_maxAct_minAR.max())
+                ax.plot(pe_traj_deg, se_traj_deg, linewidth=2, label='Trajectory')
+                ax.set_xlabel('Plane of elevation [deg]')
+                ax.set_ylabel('Shoulder elevation [deg]')
+                ax.set_title(f'Participant {participant}, Trial {trial}, max activation {results_multisubject_experiment[participant][trial]["max_activation"]:.2f}')
+                ax.legend()
+                plt.colorbar(cb, ax=ax, label='Baseline strain')
 
     if visualize_projected_trajectories_on_straimaps:        
         plt.show()
@@ -470,24 +481,31 @@ def main():
         for trial in trials_to_consider[participant]:
             exp_avg_strain = results_multisubject_experiment[participant][trial]["avg_strain"]
             exp_max_strain = results_multisubject_experiment[participant][trial]["max_strain"]
+            exp_min_strain = results_multisubject_experiment[participant][trial]["min_strain"]
 
             sim_avg_strain = results_multisubject_simulation[participant][trial]["avg_activation_strainmap"]["avg_strain"]
             sim_max_strain = results_multisubject_simulation[participant][trial]["max_activation_strainmap"]["max_strain"]
+            sim_min_strain = results_multisubject_simulation[participant][trial]["max_activation_strainmap"]["min_strain"]
 
             avg_strain_reduction = np.round(sim_avg_strain - exp_avg_strain, 2)
             max_strain_reduction = np.round(sim_max_strain - exp_max_strain, 2)
+            min_strain_reduction = np.round(sim_min_strain - exp_min_strain, 2)
 
             print(f"Participant {participant}, Trial {trial}:")
             print(f"  Average strain reduction: {avg_strain_reduction}")
             print(f"  Maximum strain reduction: {max_strain_reduction}")
+            print(f"  Minimum strain reduction: {min_strain_reduction}")
 
     # now we want to compute for each participant and print to screen:
     # - the mean across trials of the experimental average strain plus/minus standard deviation
     # - the mean across trials of the experimental maximum strain plus/minus standard deviation
+    # - the mean across trials of the exprimental minimum strain plus/minus standard deviation
     # - the mean across trials of the simulated average strain on the average activation strainmap plus/minus standard deviation
     # - the mean across trials of the simulated maximum strain on the maximum activation strainmap plus/minus standard deviation
+    # - the mean across trials of the simulated minimum strain on the maximum activation strainmap plus/minus standard deviation
     # - reduction in average strain: mean simulated average strain on average activation strainmap - mean experimental average strain
     # - reduction in maximum strain: mean simulated maximum strain on maximum activation strainmap - mean experimental maximum strain
+    # - reduction in minimum strain: mean simulated minimum strain on maximum activation strainmap - mean experimental minimum strain
     # ----- containers for group-level statistics -----
     group_exp_avg_means = []
     group_sim_avg_means = []
@@ -497,17 +515,25 @@ def main():
     group_sim_max_means = []
     group_reduction_max = []
 
+    group_exp_min_means = []
+    group_sim_min_means = []
+    group_reduction_min = []
+
     for participant in participants_to_consider:
         exp_avg_strains = []
         exp_max_strains = []
+        exp_min_strains = []
         sim_avg_strains = []
         sim_max_strains = []
+        sim_min_strains = []
 
         for trial in trials_to_consider[participant]:
             exp_avg_strains.append(results_multisubject_experiment[participant][trial]["avg_strain"])
             exp_max_strains.append(results_multisubject_experiment[participant][trial]["max_strain"])
+            exp_min_strains.append(results_multisubject_experiment[participant][trial]["min_strain"])
             sim_avg_strains.append(results_multisubject_simulation[participant][trial]["avg_activation_strainmap"]["avg_strain"])
             sim_max_strains.append(results_multisubject_simulation[participant][trial]["max_activation_strainmap"]["max_strain"])
+            sim_min_strains.append(results_multisubject_simulation[participant][trial]["max_activation_strainmap"]["min_strain"])
 
         # Skip participants with no trials
         if len(exp_avg_strains) == 0:
@@ -516,20 +542,26 @@ def main():
 
         exp_avg_strains = np.array(exp_avg_strains)
         exp_max_strains = np.array(exp_max_strains)
+        exp_min_strains = np.array(exp_min_strains)
         sim_avg_strains = np.array(sim_avg_strains)
         sim_max_strains = np.array(sim_max_strains)
+        sim_min_strains = np.array(sim_min_strains)
 
         # ----- per-participant means -----
         mean_exp_avg_strain = np.mean(exp_avg_strains)
         mean_exp_max_strain = np.mean(exp_max_strains)
+        mean_exp_min_strain = np.mean(exp_min_strains)
         mean_sim_avg_strain = np.mean(sim_avg_strains)
         mean_sim_max_strain = np.mean(sim_max_strains)
+        mean_sim_min_strain = np.mean(sim_min_strains)
 
         # ----- per-participant std (across trials) -----
         std_exp_avg_strain = np.std(exp_avg_strains, ddof=1)
         std_exp_max_strain = np.std(exp_max_strains, ddof=1)
+        std_exp_min_strain = np.std(exp_min_strains, ddof=1)
         std_sim_avg_strain = np.std(sim_avg_strains, ddof=1)
         std_sim_max_strain = np.std(sim_max_strains, ddof=1)
+        std_sim_min_strain = np.std(sim_min_strains, ddof=1)
 
         # ----- reductions -----
         # ----- percentage reductions relative to simulated means -----
@@ -543,6 +575,11 @@ def main():
         else:
             reduction_max_percent = np.nan
 
+        if mean_sim_min_strain != 0:
+            reduction_min_percent = 100.0 * (mean_sim_min_strain - mean_exp_min_strain) / mean_sim_min_strain
+        else:
+            reduction_min_percent = np.nan
+
         # ----- store for group statistics -----
         group_exp_avg_means.append(mean_exp_avg_strain)
         group_sim_avg_means.append(mean_sim_avg_strain)
@@ -551,6 +588,10 @@ def main():
         group_exp_max_means.append(mean_exp_max_strain)
         group_sim_max_means.append(mean_sim_max_strain)
         group_reduction_max.append(reduction_max_percent)
+
+        group_exp_min_means.append(mean_exp_min_strain)
+        group_sim_min_means.append(mean_sim_min_strain)
+        group_reduction_min.append(reduction_min_percent)
         # ----- print per-participant -----
         print(f"Participant {participant}:")
         print(
@@ -567,6 +608,13 @@ def main():
             f"{mean_sim_max_strain:.2f} ± {std_sim_max_strain:.2f} | "
             f"Reduction: {reduction_max_percent:.2f}%"
         )
+        print(
+            f"  Mean experimental minimum strain: "
+            f"{mean_exp_min_strain:.2f} ± {std_exp_min_strain:.2f} | "
+            f"Mean simulated minimum strain on max activation strainmap: "
+            f"{mean_sim_min_strain:.2f} ± {std_sim_min_strain:.2f} | "
+            f"Reduction: {reduction_min_percent:.2f}%"
+        )
 
 
     # ============================================================
@@ -582,6 +630,10 @@ def main():
         group_exp_max_means = np.array(group_exp_max_means)
         group_sim_max_means = np.array(group_sim_max_means)
         group_reduction_max = np.array(group_reduction_max)
+
+        group_exp_min_means = np.array(group_exp_min_means)
+        group_sim_min_means = np.array(group_sim_min_means)
+        group_reduction_min = np.array(group_reduction_min)
 
         print("\n===== AVERAGE ACROSS PARTICIPANTS =====")
 
@@ -613,6 +665,21 @@ def main():
         print(
             f"6. Mean reduction (maximum strain): "
             f"{np.mean(group_reduction_max):.2f}%"
+        )
+
+        print(
+            f"7. Mean experimental minimum strain: "
+            f"{np.mean(group_exp_min_means):.2f} ± {np.std(group_exp_min_means, ddof=1):.2f}"
+        )
+
+        print(
+            f"8. Mean simulated minimum strain: "
+            f"{np.mean(group_sim_min_means):.2f} ± {np.std(group_sim_min_means, ddof=1):.2f}"
+        )
+
+        print(
+            f"9. Mean reduction (minimum strain): "
+            f"{np.mean(group_reduction_min):.2f}%"
         )
 
 

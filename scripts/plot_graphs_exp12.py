@@ -1,6 +1,8 @@
 """
 Script to analyze the data collected in a rosbag during the real robot experiments and varying activation.
-This script produces the results that I aggregated in Fig. 9 of the paper.
+This script produces the results that I aggregated in experiment_12_summary.txt, once run for every 
+subject and trial, saving the maximum and average strain that participants experienced during the experiment, 
+together with the maximum and average muscle activation that was monitored (for the infraspinatus inferior).
 """
 
 import os
@@ -109,9 +111,9 @@ def main():
     time_final_percent = 99
 
     # select the appropriate bag file depending on the subject and trial considered
-    subject = 9 # available 1, 2, 3, 4, 5, 6, 7, 8
+    subject = 10 # available 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
     trial = 6   # available 11-8 (subject 1), 1-8 (subject 2, but reps 1,5,6 did not go well), 1-5 (subject 3), 1-6 (subject 4), 
-                # 1-6 (subject 5), 1-6 (subject 6), 1-8 (subject 7), 1-6 (subject 8), 1-6 (subject 9).
+                # 1-6 (subject 5), 1-6 (subject 6), 1-8 (subject 7), 1-6 (subject 8), 1-6 (subject 9), 1-6 (subject 10).
     if subject == 1:
         if trial==1:
             bag_file_name = 'P1_active_1.bag'
@@ -130,19 +132,19 @@ def main():
         elif trial==5:
             bag_file_name = 'P1_active_5.bag'
             time_0_percent = 20
-            time_final_percent = 41 # one way
+            time_final_percent = 39 # one way
             # time_final_percent = 52 # full
         elif trial==6:
             bag_file_name = 'P1_active_6.bag'
             time_0_percent = 62
-            time_final_percent = 76 # one way
+            time_final_percent = 72 # one way
             # time_final_percent = 90 # full
         elif trial==7:
             bag_file_name = 'P1_active_7.bag'
         elif trial==8:
             bag_file_name = 'P1_active_8.bag'
             time_0_percent = 15
-            time_final_percent = 29 # one way
+            time_final_percent = 25 # one way
             # time_final_percent = 43 # full
     elif subject==2:
         if trial==1:
@@ -159,10 +161,9 @@ def main():
         elif trial==4:
             bag_file_name = 'P2_active_4.bag'
         elif trial==5:
-            print("this rep did not go well, be careful when analyzing the results!")
             bag_file_name = 'P2_active_5.bag'
             time_0_percent = 13
-            time_final_percent = 38 # one way
+            time_final_percent = 35 # one way
             # time_final_percent = 51 # full
         elif trial==6:
             print("this rep did not go well, be careful when analyzing the results!")
@@ -174,7 +175,7 @@ def main():
             # time_final_percent = 45 # full
         elif trial==8:
             time_0_percent = 15
-            time_final_percent = 32 # one way
+            time_final_percent = 27 # one way
             # time_final_percent = 50 # full
             bag_file_name = 'P2_active_8.bag'
     elif subject==3:
@@ -193,30 +194,30 @@ def main():
         elif trial==4:
             bag_file_name = 'P3_active_4.bag'
             time_0_percent = 7
-            time_final_percent = 21 # one way
+            time_final_percent = 19.5 # one way
             # time_final_percent = 60 # full
         elif trial==5:
             bag_file_name = 'P3_active_5.bag'
             time_0_percent = 10
-            time_final_percent = 26 # one way
+            time_final_percent = 24 # one way
             # time_final_percent = 50 # full
     elif subject==4:
         if trial==1:
             bag_file_name = 'P4_active_1.bag'
             time_0_percent = 18
-            time_final_percent = 33 # one way
+            time_final_percent = 31.5 # one way
             # time_final_percent = 55 # full
         elif trial==2:
             bag_file_name = 'P4_active_2.bag'
             time_0_percent = 18
-            time_final_percent = 35 # one way
+            time_final_percent = 33.5 # one way
             # time_final_percent = 53 # full
         elif trial==3:
             bag_file_name = 'P4_active_3.bag'
         elif trial==4:
             bag_file_name = 'P4_active_4.bag'
             time_0_percent = 59
-            time_final_percent = 75 # one way
+            time_final_percent = 73 # one way
             # time_final_percent = 90 # full
         elif trial==5:
             bag_file_name = 'P4_active_5.bag'
@@ -238,7 +239,7 @@ def main():
         elif trial==4:
             bag_file_name = 'P5_active_4.bag'
             time_0_percent = 54
-            time_final_percent = 84 # one way
+            time_final_percent = 82 # one way
             # time_final_percent = 94 # full
         elif trial==5:
             bag_file_name = 'P5_active_5.bag'
@@ -270,8 +271,8 @@ def main():
             # time_final_percent = 54 # full
         elif trial==5:
             bag_file_name = 'P6_active_5.bag'
-            time_0_percent =54
-            time_final_percent = 83 # one way
+            time_0_percent =56
+            time_final_percent = 77 # one way
             # time_final_percent = 91 # full
         elif trial==6:
             bag_file_name = 'P6_active_6.bag'
@@ -303,12 +304,12 @@ def main():
         elif trial==7:
             bag_file_name = 'P7_active_7.bag'
             time_0_percent = 18
-            time_final_percent = 31 # one way
+            time_final_percent = 30 # one way
             # time_final_percent = 47 # full
         elif trial==8:
             bag_file_name = 'P7_active_8.bag'
             time_0_percent = 18
-            time_final_percent = 31 # one way
+            time_final_percent = 29 # one way
             # time_final_percent = 49 # full 
     elif subject==8:
         if trial==1:
@@ -333,7 +334,7 @@ def main():
         elif trial==6:
             bag_file_name = 'P8_active_6.bag'
             time_0_percent = 12.5
-            time_final_percent = 30 # one way
+            time_final_percent = 27.5 # one way
             # time_final_percent = 43 # full
     elif subject==9:
         if trial==1:
@@ -354,18 +355,49 @@ def main():
         elif trial==4:
             bag_file_name = 'P9_active_4.bag'
             time_0_percent = 15
-            time_final_percent = 31 # one way
+            time_final_percent = 28 # one way
             # time_final_percent = 50 # full
         elif trial==5:
             bag_file_name = 'P9_active_5.bag'
             time_0_percent = 14
-            time_final_percent = 33 # one way
+            time_final_percent = 31.5 # one way
             # time_final_percent = 55 # full
         elif trial==6:
             bag_file_name = 'P9_active_6.bag'
-            time_0_percent = 54
+            time_0_percent = 56
+            time_final_percent = 71 # one way
+            # time_final_percent = 92 # full
+    elif subject==10:
+        if trial==1:
+            bag_file_name = 'P10_active_1.bag'
+            time_0_percent = 12.5
+            time_final_percent = 30.5 # one way
+            # time_final_percent = 55 # full
+        elif trial==2:
+            bag_file_name = 'P10_active_2.bag'
+            time_0_percent = 14.5
+            time_final_percent = 25 # one way
+            # time_final_percent = 55 # full
+        elif trial==3:
+            bag_file_name = 'P10_active_3.bag'
+            time_0_percent = 13
+            time_final_percent = 29 # one way
+            # time_final_percent = 52 # full
+        elif trial==4:
+            bag_file_name = 'P10_active_4.bag'
+            time_0_percent = 58
+            time_final_percent = 73 # one way
+            # time_final_percent = 91 # full
+        elif trial==5:
+            bag_file_name = 'P10_active_5.bag'
+            time_0_percent = 57
             time_final_percent = 75 # one way
             # time_final_percent = 92 # full
+        elif trial==6:
+            bag_file_name = 'P10_active_6.bag'
+            time_0_percent = 16
+            time_final_percent = 31 # one way
+            # time_final_percent = 48 # full
 
     # load the strainmap dictionary used in the experiment
     file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models', 'Strain Maps', 'Active', 'differentiable_strainmaps_SSPA.pkl')
@@ -518,8 +550,8 @@ def main():
     optimal_trajectory = np.stack(filtered_trajectories, axis=0)        # stack everything into a 3D array again
 
     # we now instantiate the strainmap
-    desired_activation = 0
-    strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4], desired_activation)
+    desired_activation = np.max(muscle_activation_selected[:, 0])
+    strainmap = generate_approximated_strainmap(file_strainmaps, np.mean(estimated_shoulder_state[:, 4]), desired_activation)
 
     # we want to extract the time axes from both the shoulder trajectory and the muscle activation estimates
     t_shoulder = estimated_shoulder_state[:, -1]
@@ -538,7 +570,8 @@ def main():
     goal_1 = np.array([45, 95])
     fig = plt.figure()
     ax = fig.add_subplot()
-    cb = ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=strainmap.min(), vmax=strainmap.max())
+    # cb = ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=strainmap.min(), vmax=strainmap.max())
+    cb = ax.imshow(strainmap.T, origin='lower', cmap='hot', extent=[-20, 160, 0, 144], vmin=strainmap.min(), vmax=np.max(optimal_strain[:, 0]))     # to really visualize when the highest strain happened. But still, axial rotation can be different so we should span that too...
     ax.plot(np.rad2deg(estimated_shoulder_state[:, 0]), np.rad2deg(estimated_shoulder_state[:, 2]))
     ax.scatter(start[0], start[1], label = 'goal', c = 'green', edgecolors='black')
     ax.scatter(goal_1[0], goal_1[1], label = 'start', c='red', edgecolors='black')
@@ -547,7 +580,7 @@ def main():
     ax.set_xlabel("Plane of Elevation [°]")
     ax.set_ylabel("Shoulder Elevation [°]")
     ax.legend()
-    ax.set_title("EXP12: Trajectory on strainmap (0 activation)")
+    ax.set_title("EXP12: Trajectory on strainmap ({} activation)".format(np.round(desired_activation, 2)))
     fig.colorbar(cb)
 
     # here we want to evaluate the actual strain that subjects were experiencing during the experiment, 
@@ -564,6 +597,7 @@ def main():
     print('trial: ', trial)
     print('    Maximum optimal strain during the experiment: ', np.max(optimal_strain[:, 0]))
     print('    Average optimal strain during the experiment: ', np.mean(optimal_strain[:, 0]))
+    print('    Minimum optimal strain during the experiment: ', np.min(optimal_strain[:, 0]))
 
     # visualize individual human DoF
     fig = plt.figure()
@@ -664,6 +698,7 @@ def main():
         # print to screen the average and maximum muscle activation for the selected muscle
         print('    Average activation: ', np.mean(muscle_activation_selected[:,0]))
         print('    Maximum activation: ', np.max(muscle_activation_selected[:,0]))
+        print('    Minimum activation: ', np.min(muscle_activation_selected[:,0]))
 
         # now we want to plot plane of elevation and shoulder elevation over time, colored by the muscle activation of the selected muscle (ISI or SSPA)
         norm = Normalize(vmin=muscle_activation_selected[:, 0].min(),vmax=muscle_activation_selected[:, 0].max())
@@ -726,6 +761,14 @@ def main():
 
         # Custom legend
         ax.legend(handles=legend_items)
+
+    # Now we save the experimental trajectory (downsampled to 10 Hz), the optimal strain, and muscle_activation_selected inside a single .npz file, to be used for the next steps.
+    # The name of the file will be exp12_sX_tY.npz (where X is the subject number and Y is the trial number).
+    np.savez(os.path.join(path_to_repo, 'Personal_Results', 'exp12_analysis', 'exp12_s{}_t{}.npz'.format(subject, trial)),
+             trajectory=estimated_shoulder_state,
+             optimal_strain=optimal_strain,
+             muscle_activation=muscle_activation_selected)
+
     
     plt.show(block=True)
 
