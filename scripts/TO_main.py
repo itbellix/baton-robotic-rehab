@@ -123,7 +123,7 @@ if __name__ == '__main__':
         else:
             opts['ipopt.hessian_approximation'] = 'limited-memory'      # for numerical callback, to avoid expensive hessian evaluation
 
-        if experiment == 2 or experiment == 3:
+        if experiment == 2 or experiment == 3 or experiment == 13:
             opts['ipopt.max_iter'] = 100    # reduce the number of iterations, to restart the optimization from new state
         # ----------------------------------------------------------------------------------------------------------------
         # Declare model variables
@@ -325,12 +325,15 @@ if __name__ == '__main__':
                         rospy.sleep(6)
                         goal_index += 1
                     
-                    if experiment == 2:
+                    if experiment == 2 or experiment == 13:
 
                         if target_tendon == "SSPA":
                             if to_module.reachedPose(current_goal, tolerance = 0.05):
                                 goal_index += 1
-                                time.sleep(3)
+                                if experiment ==2:  # add sleep for real experiment
+                                    time.sleep(3)
+                                else:
+                                    time.sleep(1)   # shorter sleep time to reject oscillations in simulation settings
 
                         if target_tendon == "SSPA_sim":
                             count = count + 1
