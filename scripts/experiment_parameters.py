@@ -13,9 +13,13 @@ from scipy.spatial.transform import Rotation as R
 # choose which experiment to perform
 experiment = 1      # 1: Passive human subject (strain map is only position-dependent)
                     # 2: Active human subject (strain maps change with muscle activation)
-                    # 3: tuning of the cost function weights, in simulation, for experiment #1
+                    # 3: tuning of the cost function weights, in simulation, for experiment #1 (figure 5 in the paper)
                     # 4: execution of A* planning in the same conditions as experiment 3
                     # 5: execution of A* planning in the same conditions as experiment 1
+                    # 10: technical validation of the muscle activation estimation
+                    # 11: technical validation of the muscle activation estimation for the infraspinatus inferior (ISI) tendon
+                    # 12: technical validation of the muscle activation estimation for the supraspinatus anterior (SSPA) tendon, multi subject version
+                    # 13: execution of A* planning in the same conditions as experiment 12
 #-------------------------------------------------------------------------
 
 # define the required paths
@@ -337,6 +341,127 @@ if experiment==5:
     gamma_velocities = 0
     gamma_acceleration = 0
 
+if experiment == 10 or experiment == 12:    # experiment 10 belongs to technical validation, 12 corresponds to the multi subject version of it
+    # determine the time horizon and control intervals for the NLP problem, on the basis of the experiment
+    N = 10      # control intervals used (control will be constant during each interval)
+    T = 1.      # time horizon for the optimization
+
+    target_tendon = "SSPA"
+    file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Active', 'differentiable_strainmaps_SSPA.pkl')
+    index_muscle = 11   # from the OpenSim model, 11 for ISI and 18 for SSPA
+
+    # set the cost weights
+    if target_tendon == "SSPA":
+        gamma_strain = 2        # weight for increase in strain
+        gamma_goal = 0.8          # weight for distance to goal (real robot)
+        gamma_velocities = 0        # weight for human velocities
+        gamma_acceleration = 0.4  # weight on the coordinates' acceleration (real robot)
+
+        x_0 = np.deg2rad(np.array([60, 0, 60, 0, 0, 0])) 
+
+        x_goal_1 = np.deg2rad(np.array([45, 0, 95, 0, 0, 0]))
+
+        # goal states (if more than one, the next one is used once the previous is reached)
+        x_goal = np.vstack((x_goal_1, x_0, x_goal_1, x_0))
+
+        speed_estimate = True
+
+    # enforce constraints on the final state
+    constrain_final_position = False
+    constrain_final_velocity = True
+
+    # parameters for considering the varying activation
+    min_activation = 0
+    max_activation = 0.5
+    delta_activation = 0.01
+
+    perform_BATON = True
+    perform_A_star = False
+
+    # increase the rotational stiffness, since subject is asked
+    # to externally rotate to engage their muscles
+    rotational_stiffness_cart = 25
+
+if experiment == 11:
+    # determine the time horizon and control intervals for the NLP problem, on the basis of the experiment
+    N = 10      # control intervals used (control will be constant during each interval)
+    T = 1.      # time horizon for the optimization
+
+    target_tendon = "ISI"
+    file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Active', 'differentiable_strainmaps_ISI.pkl')
+    index_muscle = 11   # from the OpenSim model (infraspinatus inferior)
+
+    if target_tendon == "ISI":
+        gamma_strain = 1        # weight for increase in strain
+        gamma_goal = 1.5          # weight for distance to goal
+        gamma_velocities = 0        # weight for human velocities
+        gamma_acceleration = 0.3  # weight on the coordinates' acceleration
+
+        # initial state (referred explicitly to the position of the patient's GH joint) 
+        # Therapy will start in this position - used to build the NLP structure, and to command first position of the robot
+        # x = [pe, pe_dot, se, se_dot, ar, ar_dot], but note that ar and ar_dot are not tracked
+        x_0 = np.deg2rad(np.array([60, 0, 60, 0, 0, 0]))
+
+        # goal states (if more than one, the next one is used once the previous is reached)
+        x_goal_1 = np.deg2rad(np.array([100, 0, 90, 0, 0, 0]))
+
+        x_goal = np.vstack((x_goal_1, x_0, x_goal_1, x_0))
+
+        speed_estimate = True
+
+    # enforce constraints on the final state
+    constrain_final_position = False
+    constrain_final_velocity = True
+
+    # parameters for considering the varying activation
+    min_activation = 0
+    max_activation = 0.5
+    delta_activation = 0.01
+
+    perform_BATON = True
+    perform_A_star = False
+
+    # increase the rotational stiffness, since subject is asked
+    # to externally rotate to engage their muscles
+    rotational_stiffness_cart = 25
+
+if experiment == 13:    # this experiment uses A* to plan trajectories on the passive maps corresponding to experiment 12
+    # determine the time horizon and control intervals for the NLP problem, on the basis of the experiment
+    N = 10      # control intervals used (control will be constant during each interval)
+    T = 1.      # time horizon for the optimization
+
+    target_tendon = "SSPA"
+    file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models','Strain Maps', 'Active', 'differentiable_strainmaps_SSPA.pkl')
+    index_muscle = 11   # from the OpenSim model, 11 for ISI and 18 for SSPA
+
+    # set the cost weights
+    gamma_strain = 2        # weight for increase in strain
+    gamma_goal = 0.8          # weight for distance to goal (real robot)
+    gamma_velocities = 0        # weight for human velocities
+    gamma_acceleration = 0.4  # weight on the coordinates' acceleration (real robot)
+
+    # goal states (if more than one, the next one is used once the previous is reached)
+    x_0 = np.deg2rad(np.array([60, 0, 60, 0, 0, 0])) 
+    x_goal_1 = np.deg2rad(np.array([45, 0, 95, 0, 0, 0]))
+    x_goal = np.vstack((x_goal_1, x_0))
+
+    # enforce constraints on the final state
+    constrain_final_position = False
+    constrain_final_velocity = True
+    speed_estimate = False                  # this experiment is performed in simulation, without the inertial effect of the human arms
+                                            # for this reason, speed is actually higher than in reality and risks building up unrealistically.
+
+    # parameters for considering the varying activation
+    min_activation = 0
+    max_activation = 0.5
+    delta_activation = 0.01
+
+    perform_BATON = True
+    perform_A_star = False
+
+    # increase the rotational stiffness, since subject is asked
+    # to externally rotate to engage their muscles
+    rotational_stiffness_cart = 25
 
 # -------------------------------------------------------------------------------
 # experimental parameters used by both the TO and the robot control modules
