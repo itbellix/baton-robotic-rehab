@@ -509,3 +509,76 @@ trial_short:  6
     Average optimal strain during the experiment:  1.1868272425007012
     Average activation:  0.13620105977718985
     Maximum activation:  0.34313562512397766
+
+Participant 10 ---------------------------------------------------
+trial_full:  1
+    Maximum optimal strain during the experiment:  2.3219902515411377
+    Average optimal strain during the experiment:  1.433738042426303
+    Average activation:  0.1708838946188944
+    Maximum activation:  0.386910617351532
+
+trial_full:  2
+    Maximum optimal strain during the experiment:  2.0163285732269287
+    Average optimal strain during the experiment:  1.1898085448612161
+    Average activation:  0.15452069129242327
+    Maximum activation:  0.3161255121231079
+
+trial_full:  3
+    Maximum optimal strain during the experiment:  2.080854654312134
+    Average optimal strain during the experiment:  1.293305695480645
+    Average activation:  0.15517693749603595
+    Maximum activation:  0.3282196521759033
+
+trial_full:  4
+    Maximum optimal strain during the experiment:  1.6318997144699097
+    Average optimal strain during the experiment:  1.1499479562044144
+    Average activation:  0.1296374934696784
+    Maximum activation:  0.25096219778060913
+
+trial_full:  5
+    Maximum optimal strain during the experiment:  1.7315888404846191
+    Average optimal strain during the experiment:  1.2236571181565523
+    Average activation:  0.14346179633055817
+    Maximum activation:  0.2737264037132263
+
+trial_full:  6
+    Maximum optimal strain during the experiment:  1.7477153539657593
+    Average optimal strain during the experiment:  1.187030781266148
+    Average activation:  0.13485479159512523
+    Maximum activation:  0.2779977321624756
+
+trial_short:  1
+    Maximum optimal strain during the experiment:  1.7112758159637451
+    Average optimal strain during the experiment:  1.05812764928696
+    Average activation:  0.10542378761629398
+    Maximum activation:  0.2708789110183716
+
+trial_short:  2
+    Maximum optimal strain during the experiment:  1.9035614728927612
+    Average optimal strain during the experiment:  1.1862136868782986
+    Average activation:  0.14972740332040277
+    Maximum activation:  0.3101073205471039
+
+trial_short:  3
+    Maximum optimal strain during the experiment:  1.8728433847427368
+    Average optimal strain during the experiment:  1.1139349454565892
+    Average activation:  0.11212491001969158
+    Maximum activation:  0.304575651884079
+
+trial_short:  4
+    Maximum optimal strain during the experiment:  1.627377986907959
+    Average optimal strain during the experiment:  1.031198793053627
+    Average activation:  0.11407431067726793
+    Maximum activation:  0.25096219778060913
+
+trial_short:  5
+    Maximum optimal strain during the experiment:  1.7315888404846191
+    Average optimal strain during the experiment:  1.1525234065868042
+    Average activation:  0.13233993977526606
+    Maximum activation:  0.2737264037132263
+
+trial_short:  6
+    Maximum optimal strain during the experiment:  1.7477153539657593
+    Average optimal strain during the experiment:  1.1181284078420737
+    Average activation:  0.13446895305924447
+    Maximum activation:  0.2779977321624756

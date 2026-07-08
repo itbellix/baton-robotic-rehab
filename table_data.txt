@@ -1,32 +1,51 @@
 Participant 1:
-  Mean experimental average strain: 1.43 ± 0.26 | Mean simulated average strain on avg activation strainmap: 1.36 ± 0.19 | Reduction: -4.90%
-  Mean experimental maximum strain: 2.12 ± 0.17 | Mean simulated maximum strain on max activation strainmap: 2.16 ± 0.18 | Reduction: 2.00%
+  Mean experimental average strain: 1.43 ± 0.26 | Mean simulated average strain on avg activation strainmap: 1.45 ± 0.24 | Reduction: 1.31%
+  Mean experimental maximum strain: 2.12 ± 0.17 | Mean simulated maximum strain on max activation strainmap: 2.17 ± 0.18 | Reduction: 2.31%
+  Mean experimental minimum strain: 0.43 ± 0.05 | Mean simulated minimum strain on max activation strainmap: 2.09 ± 0.23 | Reduction: 79.63%
 Participant 2:
-  Mean experimental average strain: 1.41 ± 0.09 | Mean simulated average strain on avg activation strainmap: 1.41 ± 0.12 | Reduction: 0.00%
-  Mean experimental maximum strain: 1.91 ± 0.10 | Mean simulated maximum strain on max activation strainmap: 1.98 ± 0.11 | Reduction: 3.37%
+  Mean experimental average strain: 1.41 ± 0.09 | Mean simulated average strain on avg activation strainmap: 1.38 ± 0.17 | Reduction: -2.02%
+  Mean experimental maximum strain: 1.91 ± 0.10 | Mean simulated maximum strain on max activation strainmap: 1.98 ± 0.10 | Reduction: 3.45%
+  Mean experimental minimum strain: 0.29 ± 0.13 | Mean simulated minimum strain on max activation strainmap: 1.89 ± 0.06 | Reduction: 84.68%
 Participant 3:
-  Mean experimental average strain: 1.11 ± 0.12 | Mean simulated average strain on avg activation strainmap: 1.22 ± 0.11 | Reduction: 9.29%
-  Mean experimental maximum strain: 1.79 ± 0.05 | Mean simulated maximum strain on max activation strainmap: 2.01 ± 0.25 | Reduction: 10.78%
+  Mean experimental average strain: 1.11 ± 0.12 | Mean simulated average strain on avg activation strainmap: 1.18 ± 0.11 | Reduction: 5.90%
+  Mean experimental maximum strain: 1.79 ± 0.05 | Mean simulated maximum strain on max activation strainmap: 2.02 ± 0.23 | Reduction: 11.00%
+  Mean experimental minimum strain: 0.64 ± 0.02 | Mean simulated minimum strain on max activation strainmap: 1.97 ± 0.24 | Reduction: 67.33%
 Participant 4:
-  Mean experimental average strain: 1.21 ± 0.06 | Mean simulated average strain on avg activation strainmap: 1.18 ± 0.12 | Reduction: -2.82%
-  Mean experimental maximum strain: 1.92 ± 0.18 | Mean simulated maximum strain on max activation strainmap: 1.95 ± 0.18 | Reduction: 1.54%
+  Mean experimental average strain: 1.21 ± 0.05 | Mean simulated average strain on avg activation strainmap: 1.20 ± 0.10 | Reduction: -1.00%
+  Mean experimental maximum strain: 1.92 ± 0.18 | Mean simulated maximum strain on max activation strainmap: 1.96 ± 0.16 | Reduction: 2.07%
+  Mean experimental minimum strain: 0.27 ± 0.05 | Mean simulated minimum strain on max activation strainmap: 1.93 ± 0.17 | Reduction: 85.95%
 Participant 5:
-  Mean experimental average strain: 1.25 ± 0.06 | Mean simulated average strain on avg activation strainmap: 1.29 ± 0.05 | Reduction: 3.36%
-  Mean experimental maximum strain: 1.72 ± 0.13 | Mean simulated maximum strain on max activation strainmap: 1.78 ± 0.14 | Reduction: 3.00%
+  Mean experimental average strain: 1.25 ± 0.06 | Mean simulated average strain on avg activation strainmap: 1.25 ± 0.06 | Reduction: 0.49%
+  Mean experimental maximum strain: 1.72 ± 0.13 | Mean simulated maximum strain on max activation strainmap: 1.80 ± 0.16 | Reduction: 4.11%
+  Mean experimental minimum strain: 0.47 ± 0.03 | Mean simulated minimum strain on max activation strainmap: 1.74 ± 0.15 | Reduction: 72.88%
 Participant 6:
-  Mean experimental average strain: 1.25 ± 0.01 | Mean simulated average strain on avg activation strainmap: 1.24 ± 0.08 | Reduction: -0.54%
-  Mean experimental maximum strain: 1.83 ± 0.03 | Mean simulated maximum strain on max activation strainmap: 1.85 ± 0.00 | Reduction: 1.08%
+  Mean experimental average strain: 1.28 ± 0.05 | Mean simulated average strain on avg activation strainmap: 1.26 ± 0.05 | Reduction: -1.42%
+  Mean experimental maximum strain: 1.83 ± 0.03 | Mean simulated maximum strain on max activation strainmap: 1.89 ± 0.01 | Reduction: 3.13%
+  Mean experimental minimum strain: 0.30 ± 0.15 | Mean simulated minimum strain on max activation strainmap: 1.84 ± 0.02 | Reduction: 83.83%
 Participant 7:
-  Mean experimental average strain: 1.56 ± 0.13 | Mean simulated average strain on avg activation strainmap: 1.62 ± 0.07 | Reduction: 3.30%
-  Mean experimental maximum strain: 2.23 ± 0.11 | Mean simulated maximum strain on max activation strainmap: 2.27 ± 0.11 | Reduction: 2.05%
+  Mean experimental average strain: 1.56 ± 0.13 | Mean simulated average strain on avg activation strainmap: 1.60 ± 0.10 | Reduction: 2.44%
+  Mean experimental maximum strain: 2.23 ± 0.11 | Mean simulated maximum strain on max activation strainmap: 2.27 ± 0.11 | Reduction: 1.97%
+  Mean experimental minimum strain: 0.67 ± 0.14 | Mean simulated minimum strain on max activation strainmap: 2.24 ± 0.10 | Reduction: 70.30%
 Participant 8:
-  Mean experimental average strain: 1.01 ± 0.11 | Mean simulated average strain on avg activation strainmap: 1.07 ± 0.09 | Reduction: 5.90%
-  Mean experimental maximum strain: 1.70 ± 0.15 | Mean simulated maximum strain on max activation strainmap: 1.75 ± 0.16 | Reduction: 2.67%
+  Mean experimental average strain: 1.01 ± 0.10 | Mean simulated average strain on avg activation strainmap: 1.03 ± 0.09 | Reduction: 2.40%
+  Mean experimental maximum strain: 1.70 ± 0.15 | Mean simulated maximum strain on max activation strainmap: 1.79 ± 0.20 | Reduction: 5.11%
+  Mean experimental minimum strain: 0.42 ± 0.04 | Mean simulated minimum strain on max activation strainmap: 1.69 ± 0.20 | Reduction: 74.92%
+Participant 9:
+  Mean experimental average strain: 1.10 ± 0.17 | Mean simulated average strain on avg activation strainmap: 1.07 ± 0.14 | Reduction: -3.12%
+  Mean experimental maximum strain: 2.10 ± 0.09 | Mean simulated maximum strain on max activation strainmap: 2.16 ± 0.10 | Reduction: 2.75%
+  Mean experimental minimum strain: 0.24 ± 0.05 | Mean simulated minimum strain on max activation strainmap: 2.11 ± 0.14 | Reduction: 88.73%
+Participant 10:
+  Mean experimental average strain: 1.13 ± 0.09 | Mean simulated average strain on avg activation strainmap: 1.11 ± 0.15 | Reduction: -1.28%
+  Mean experimental maximum strain: 1.76 ± 0.14 | Mean simulated maximum strain on max activation strainmap: 1.87 ± 0.17 | Reduction: 5.74%
+  Mean experimental minimum strain: 0.37 ± 0.01 | Mean simulated minimum strain on max activation strainmap: 1.78 ± 0.15 | Reduction: 79.26%
 
 ===== AVERAGE ACROSS PARTICIPANTS =====
-1. Mean experimental average strain: 1.28 ± 0.18
-2. Mean simulated average strain: 1.30 ± 0.17
-3. Mean reduction (average strain): 1.70
-4. Mean experimental maximum strain: 1.90 ± 0.19
-5. Mean simulated maximum strain: 1.97 ± 0.18
-6. Mean reduction (maximum strain): 3.31%
+1. Mean experimental average strain: 1.25 ± 0.17
+2. Mean simulated average strain: 1.25 ± 0.18
+3. Mean reduction (average strain): 0.37
+4. Mean experimental maximum strain: 1.91 ± 0.18
+5. Mean simulated maximum strain: 1.99 ± 0.16
+6. Mean reduction (maximum strain): 4.17%
+7. Mean experimental minimum strain: 0.41 ± 0.15
+8. Mean simulated minimum strain: 1.93 ± 0.18
+9. Mean reduction (minimum strain): 78.75%
