@@ -242,7 +242,8 @@ def load_experiment_summary(results_folder,
                 "avg_strain": float(np.mean(optimal_strain[:,0])),   # optimal strain is first column, time is the second one
                 "max_strain": float(np.max(optimal_strain[:,0])),
                 "min_strain": float(np.min(optimal_strain[:,0])),
-                "trajectory": trajectory
+                "trajectory": trajectory,
+                "muscle_activation": muscle_activation   # full (N, 2) array: column 0 = activation, column 1 = time
             }
 
     return results
@@ -367,6 +368,11 @@ def main():
     # initialize results dictionary for the simulation
     results_multisubject_simulation = {}
 
+    # common grid (percentage of movement, 0-100%) onto which every subject's muscle
+    # activation is resampled, so that all histories can be overlaid and compared
+    n_movement_samples = 100
+    movement_grid = np.linspace(0, 100, n_movement_samples)
+
     # now we loop over all of the trials of the multisubject experiment, to select the right strainmap and evaluate the 0-activation trajectory. Also, we process the corresponding trajectories to downsample them and
     # compute the average experimental trajectory to show on the strainmap corresponding to the mean of the maximum activations across subjects.
     for participant in participants_to_consider:
@@ -442,6 +448,19 @@ def main():
                 np.interp(new_idx, old_idx, traj_deg[:, 1]),
                 np.interp(new_idx, old_idx, traj_deg[:, 2]),
             ])
+
+            # resample the muscle activation onto the common 0-100% movement grid, using EXACTLY the
+            # same (subject-specific) time window in which the trajectory is considered.
+            # The trajectory time stamps live in column 16 of the raw trajectory array; the trajectory
+            # is used over its whole span, so [t0, t1] below is that full window.
+            muscle_activation = results_multisubject_experiment[participant][trial]["muscle_activation"]  # (N, 2): col0 = activation, col1 = time
+            t0 = traj[:, 16].min()
+            t1 = traj[:, 16].max()
+            act_mask = (muscle_activation[:, 1] >= t0) & (muscle_activation[:, 1] <= t1)
+            act_win = muscle_activation[act_mask]
+            act_movement_pct = (act_win[:, 1] - t0) / (t1 - t0) * 100.0        # time -> % of movement
+            activation_resampled = np.interp(movement_grid, act_movement_pct, act_win[:, 0])
+            results_multisubject_experiment[participant][trial]["activation_resampled"] = activation_resampled
 
             
             # store results with same key structure
@@ -552,6 +571,7 @@ def main():
     group_sim_min_means = []
     group_reduction_min = []
     group_trajectories = []
+    group_activations = []                 # one mean activation history (0-100% movement) per participant
 
     for participant in participants_to_consider:
         exp_avg_strains = []
@@ -562,6 +582,7 @@ def main():
         sim_max_strains = []
         sim_min_strains = []
         exp_trajectories = []
+        exp_activations = []
 
         for trial in trials_to_consider[participant]:
             exp_avg_strains.append(results_multisubject_experiment[participant][trial]["avg_strain"])
@@ -572,6 +593,7 @@ def main():
             sim_min_strains.append(results_multisubject_simulation[participant][trial]["max_activation_strainmap"]["min_strain"])
             exp_trajectories.append(results_multisubject_experiment[participant][trial]["trajectory"])
             exp_max_activations.append(results_multisubject_experiment[participant][trial]["max_activation"])
+            exp_activations.append(results_multisubject_experiment[participant][trial]["activation_resampled"])
             
 
         # Skip participants with no trials
@@ -597,6 +619,7 @@ def main():
         mean_sim_min_strain = np.mean(sim_min_strains)
         mean_traj = np.mean(np.stack(exp_trajectories, axis=0), axis=0)
         mean_exp_max_activation = np.mean(exp_max_activations)
+        mean_activation = np.mean(np.stack(exp_activations, axis=0), axis=0)   # (n_movement_samples,)
 
         # ----- per-participant std (across trials) -----
         std_exp_avg_strain = np.std(exp_avg_strains, ddof=1)
@@ -637,6 +660,7 @@ def main():
         group_reduction_min.append(reduction_min_percent)
 
         group_trajectories.append(mean_traj)
+        group_activations.append(mean_activation)
         # ----- print per-participant -----
         print(f"Participant {participant}:")
         print(
@@ -701,6 +725,7 @@ def main():
         group_reduction_min = np.array(group_reduction_min)
 
         group_trajectories = np.array(group_trajectories)
+        group_activations = np.array(group_activations)           # (Nsubj, n_movement_samples)
 
         print("\n===== AVERAGE ACROSS PARTICIPANTS =====")
 
@@ -835,6 +860,43 @@ def main():
         ax.set_ylim(55, 100)
         ax.set_xlim(40, 70)
         plt.colorbar(cb, ax=ax, label='Strain')
+
+        # ============================================================
+        #           GROUP-LEVEL MUSCLE ACTIVATION (0-100% movement)
+        # ============================================================
+        # group mean and standard deviation of the muscle activation across participants,
+        # computed sample-wise on the common 0-100% movement grid
+        mean_group_activation = np.mean(group_activations, axis=0)             # (n_movement_samples,)
+        std_group_activation = np.std(group_activations, axis=0, ddof=1)       # (n_movement_samples,)
+        mean_std_activation = np.mean(std_group_activation)                    # single aggregate metric
+
+        print(
+            f"\nGroup muscle activation across {group_activations.shape[0]} participants: "
+            f"average sample-wise SD = {mean_std_activation:.4f}"
+        )
+
+        # plot every participant's activation history against the percentage of movement
+        fig, ax = plt.subplots(figsize=(9, 6))
+        for i in range(group_activations.shape[0]):
+            ax.plot(movement_grid, group_activations[i], alpha=0.5, linewidth=1)
+
+        # group mean ± 1 SD band on top
+        ax.fill_between(
+            movement_grid,
+            mean_group_activation - std_group_activation,
+            mean_group_activation + std_group_activation,
+            color='blue', alpha=0.2, label='±1 SD'
+        )
+        ax.plot(movement_grid, mean_group_activation, color='blue', linewidth=3, label='Group mean')
+
+        ax.set_xlabel('Movement [%]')
+        ax.set_ylabel('Muscle activation')
+        ax.set_xlim(0, 100)
+        ax.set_xticks(np.arange(0, 101, 10))
+        ax.grid(axis='x', linestyle=':', alpha=0.6)
+        ax.set_title(f'Muscle activation across participants (average SD: {mean_std_activation:.4f})')
+        ax.legend()
+
         plt.show()
 
 
