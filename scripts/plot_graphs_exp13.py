@@ -772,6 +772,7 @@ def main():
 
         # std of the normal deviation at each sample
         std_normal = np.std(normal_dist, axis=0, ddof=1)                   # (100,)
+        mean_std_normal = np.mean(std_normal)
 
         # upper/lower boundary curves
         upper_xy = mean_xy + normal * std_normal[:, None]
@@ -829,7 +830,7 @@ def main():
 
         ax.set_xlabel('Plane of elevation [deg]')
         ax.set_ylabel('Shoulder elevation [deg]')
-        ax.set_title('Group mean trajectory ± 1 SD')
+        ax.set_title(f'Group mean trajectory ± 1 SD (average SD: {mean_std_normal:.2f} deg)')
         ax.legend()
         ax.set_ylim(55, 100)
         ax.set_xlim(40, 70)
