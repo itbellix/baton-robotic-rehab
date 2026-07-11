@@ -22,6 +22,7 @@ PLOT_MUSCLE_ACTIVATION = True
 PLOT_INTERACTION_FORCE = False
 PLOT_TRAJECTORY_ON_STRAINMAP = True
 PLOT_2D_TRAJECTORY = True
+MOVEMENT_SAMPLES = 1000     # samples used to resample each trial over the 0-100% movement phase
 
 def gaussian_2d(x, y, amplitude, x0, y0, sigma_x, sigma_y, offset):
     '''
@@ -105,7 +106,12 @@ def colored_line(ax, x, y, c, cmap, norm, linestyle='solid', linewidth=2.5, labe
 
     return lc
 
-def process_trial(subject, trial, path_to_bag, file_strainmaps, time_0_percent, time_final_percent):
+def resample_to_grid(x, y, grid):
+    """Interpolate y(x) onto the given grid. x is sorted first to guarantee monotonicity."""
+    order = np.argsort(x, kind='stable')
+    return np.interp(grid, x[order], y[order])
+
+def process_trial(subject, trial, path_to_bag, file_strainmaps, intervals):
     # select the appropriate bag file depending on the subject and trial considered
     if subject == 1:
         bag_file_name = f'exp11_stijn_{trial}.bag'
@@ -213,49 +219,56 @@ def process_trial(subject, trial, path_to_bag, file_strainmaps, time_0_percent, 
     # reshaping the optimal trajectories into 3D array
     optimal_trajectory = np.reshape(optimal_trajectory, (6, -1, optimal_trajectory.shape[1]), order='F')
 
-    # Now, let's filter the data to retain only the interesting part of the experiment
-    # (i.e., when the subject is wearing the brace properly and the robot is moving)
-    init_time = xyz_curr[int(xyz_curr.shape[0]/100*time_0_percent), -1]         # identify initial timestep
-    end_time = xyz_curr[int(xyz_curr.shape[0]/100*time_final_percent), -1] - init_time # identify final timestep
+    # Now, let's retain only the two movement intervals defined for this trial.
+    # Each interval is a (start%, end%) window of the FULL experiment duration. The data of
+    # the first interval is remapped to 0-50% of the displayed movement, the data of the
+    # second interval to 50-100%. The two segments are then concatenated: since we are only
+    # interested in time-independent quantities, the segments having different timestamps
+    # (and possibly different durations) is not a problem.
+    (first_lo, first_hi), (second_lo, second_hi) = intervals
 
-    estimated_shoulder_state[:,-1] = estimated_shoulder_state[:,-1] - init_time   # center time values starting at initial time
-    xyz_curr[:,-1] = xyz_curr[:,-1] - init_time
-    xyz_cmd[:,-1] = xyz_cmd[:,-1] - init_time
-    if z_uncompensated is not None:
-        z_uncompensated[:,-1] = z_uncompensated[:,-1] - init_time
-    angvec_curr[:,-1] = angvec_curr[:,-1] - init_time
-    angvec_cmd[:,-1] = angvec_cmd[:,-1] - init_time
-    optimal_trajectory[:,:,-1] = optimal_trajectory[:,:,-1] - init_time
-    if interaction_torque_x is not None:
-        interaction_torque_x[:,-1] = interaction_torque_x[:,-1] - init_time
+    # absolute timestamp (taken from xyz_curr) corresponding to a percentage of the recording
+    def abs_time_at(pct):
+        idx = int(np.clip(round(xyz_curr.shape[0] / 100 * pct), 0, xyz_curr.shape[0] - 1))
+        return xyz_curr[idx, -1]
+
+    t1_start, t1_end = abs_time_at(first_lo), abs_time_at(first_hi)
+    t2_start, t2_end = abs_time_at(second_lo), abs_time_at(second_hi)
+
+    # keep the rows (last column = timestamp) falling within the two intervals, remap their
+    # timestamps to 0-50% (first interval) and 50-100% (second interval), then concatenate
+    def segment_and_remap(arr):
+        if arr is None:
+            return None
+        t = arr[:, -1]
+        seg1 = arr[(t >= t1_start) & (t <= t1_end)].copy()
+        seg2 = arr[(t >= t2_start) & (t <= t2_end)].copy()
+        seg1[:, -1] = (seg1[:, -1] - t1_start) / (t1_end - t1_start) * 50
+        seg2[:, -1] = 50 + (seg2[:, -1] - t2_start) / (t2_end - t2_start) * 50
+        return np.vstack((seg1, seg2))
+
+    estimated_shoulder_state = segment_and_remap(estimated_shoulder_state)
+    xyz_curr = segment_and_remap(xyz_curr)
+    xyz_cmd = segment_and_remap(xyz_cmd)
+    z_uncompensated = segment_and_remap(z_uncompensated)
+    angvec_curr = segment_and_remap(angvec_curr)
+    angvec_cmd = segment_and_remap(angvec_cmd)
+    interaction_torque_x = segment_and_remap(interaction_torque_x)
     if muscle_activation_max is not None:
-        muscle_activation_max[:,-1] = muscle_activation_max[:,-1] - init_time
-        muscle_activation_selected[:,-1] = muscle_activation_selected[:,-1] - init_time
+        muscle_activation_max = segment_and_remap(muscle_activation_max)
+        muscle_activation_selected = segment_and_remap(muscle_activation_selected)
 
-    estimated_shoulder_state = estimated_shoulder_state[(estimated_shoulder_state[:,-1]>0) & (estimated_shoulder_state[:,-1]<end_time)]
-    xyz_curr = xyz_curr[(xyz_curr[:,-1]>0) & (xyz_curr[:,-1]<end_time)]    # retain data after initial time
-    xyz_cmd = xyz_cmd[(xyz_cmd[:,-1]>0) & (xyz_cmd[:,-1]<end_time)]
-    if z_uncompensated is not None:
-        z_uncompensated = z_uncompensated[(z_uncompensated[:,-1]>0) & (z_uncompensated[:,-1]<end_time)]
-    angvec_curr = angvec_curr[(angvec_curr[:,-1]>0) & (angvec_curr[:,-1]<end_time)]
-    angvec_cmd = angvec_cmd[(angvec_cmd[:,-1]>0) & (angvec_cmd[:,-1]<end_time)]
+    # the optimal trajectories live in a 3D array (n_dof, n_samples, n_cols): remap each
+    # slice independently and stack them back together
+    optimal_trajectory = np.stack(
+        [segment_and_remap(optimal_trajectory[i]) for i in range(optimal_trajectory.shape[0])],
+        axis=0
+    )
 
-    if muscle_activation_max is not None:
-        muscle_activation_max = muscle_activation_max[(muscle_activation_max[:,-1]>0) & (muscle_activation_max[:,-1]<end_time)]
-        muscle_activation_selected = muscle_activation_selected[(muscle_activation_selected[:,-1]>0) & (muscle_activation_selected[:,-1]<end_time)]
-
-    if interaction_torque_x is not None:
-        interaction_torque_x = interaction_torque_x[(interaction_torque_x[:,-1]>0) & (interaction_torque_x[:,-1]<end_time)]
-
-    filtered_trajectories = []                      # also filter the optimal trajectories
-    for i in range(optimal_trajectory.shape[0]):
-        slice_i = optimal_trajectory[i, :, :]
-        filtered_slice = slice_i[(slice_i[:, -1] > 0) & (slice_i[:, -1] < end_time)]
-        filtered_trajectories.append(filtered_slice)
-
-    optimal_trajectory = np.stack(filtered_trajectories, axis=0)        # stack everything into a 3D array again
-
-    strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[100, 4], 0)
+    # pick a representative axial-rotation value to slice the strainmap (index clamped in case
+    # the concatenated segments contain fewer than 100 samples)
+    ar_index = min(100, estimated_shoulder_state.shape[0] - 1)
+    strainmap = generate_approximated_strainmap(file_strainmaps, estimated_shoulder_state[ar_index, 4], 0)
     max_strain = 1.9    # play with this number a bit to get best visualizations
 
     # we want to extract the time axes from both the shoulder trajectory and the muscle activation estimates
@@ -341,6 +354,7 @@ def process_trial(subject, trial, path_to_bag, file_strainmaps, time_0_percent, 
         if z_uncompensated is not None:
             ax.plot(z_uncompensated[:,-1], z_uncompensated[:,0], label = 'z_des', color='cornflowerblue', linestyle='dashed')
         ax.set_ylabel('[m]')
+        ax.set_xlabel('Movement [%]')
         ax.legend()
         fig.suptitle(f"EXP11 (trial {trial}): EE cartesian position")
 
@@ -367,7 +381,7 @@ def process_trial(subject, trial, path_to_bag, file_strainmaps, time_0_percent, 
         ax = fig.add_subplot(212)
         ax.plot(angvec_curr_selected[:, -1], angle_mismatch, label='angle mismatch')
         ax.set_ylabel('[deg]')
-        ax.set_xlabel('time [s]')
+        ax.set_xlabel('Movement [%]')
         ax.legend()
         fig.suptitle(f"EXP11 (trial {trial}): EE orientation")
 
@@ -378,83 +392,30 @@ def process_trial(subject, trial, path_to_bag, file_strainmaps, time_0_percent, 
             ax = fig.add_subplot()
             ax.plot(interaction_torque_x[:,-1], interaction_torque_x[:,0])
             ax.set_ylabel('[N]')
+            ax.set_xlabel('Movement [%]')
             ax.set_title(f'Interaction torque (x) - trial {trial}')
 
-    if PLOT_MUSCLE_ACTIVATION:
-        if muscle_activation_selected is not None:
-            fig, ax = plt.subplots(figsize=(16, 4))
-            ax.plot(muscle_activation_selected[:,-1], muscle_activation_selected[:,0], label='ISI')
-            ax.legend()
-            ax.set_ylabel('activation')
-            ax.set_title(f'Muscle activation - trial {trial}')
+    # Resample the signals of interest onto a common movement-percentage grid (0-100%), so
+    # that every trial has the same number of samples and can be overlaid on a single figure.
+    # The overlaid muscle-activation and 2D-DoF figures are produced once, across all trials,
+    # in main().
+    movement_grid = np.linspace(0, 100, MOVEMENT_SAMPLES)
+    pe_grid = resample_to_grid(estimated_shoulder_state[:, -1], np.rad2deg(estimated_shoulder_state[:, 0]), movement_grid)
+    se_grid = resample_to_grid(estimated_shoulder_state[:, -1], np.rad2deg(estimated_shoulder_state[:, 2]), movement_grid)
 
-            # print to screen the average maximum muscle activation
-            print('Average maximum activation: ', np.mean(muscle_activation_max[:, 0]))
+    activation_isi = None
+    if muscle_activation_selected is not None:
+        activation_isi = resample_to_grid(muscle_activation_selected[:, -1], muscle_activation_selected[:, 0], movement_grid)
+        # print to screen the average maximum muscle activation
+        print('Average maximum activation: ', np.mean(muscle_activation_max[:, 0]))
 
-    if PLOT_2D_TRAJECTORY:
-        if muscle_activation_selected is not None:
-            # now we want to plot plane of elevation and shoulder elevation over time, colored by the muscle activation of the selected muscle (ISI or SSPA)
-            norm = Normalize(vmin=muscle_activation_selected[:, 0].min(),vmax=muscle_activation_selected[:, 0].max())
-            red_cmap = LinearSegmentedColormap.from_list("dark_to_bright_red",["#4d0000", "#ff0000"])   # dark red → bright red
-            with_cmap = 0
-            fig, ax = plt.subplots(figsize=(16, 4))
-
-            # X/Y trajectory (adapt if needed)
-            time = estimated_shoulder_state[:, -1]
-            pe = np.rad2deg(estimated_shoulder_state[:, 0])
-            se = np.rad2deg(estimated_shoulder_state[:, 2])
-
-            if with_cmap:
-                # --- Solid line (first trajectory) ---
-                lc1 = colored_line(
-                    ax, time, pe, muscle_activation_selected[:, 0],
-                    cmap=red_cmap,
-                    norm=norm,
-                    linestyle='solid',
-                    label='PE'
-                )
-
-                # --- Dashed line (second trajectory) ---
-                lc2 = colored_line(
-                    ax, time, se, muscle_activation_selected[:, 0],
-                    cmap=red_cmap,
-                    norm=norm,
-                    linestyle='dashed',
-                    label='SE'
-                )
-
-                # Custom legend
-                legend_items = [
-                    Line2D([0], [0], color="#ff0000", lw=2.5, linestyle='solid', label='PE'),
-                    Line2D([0], [0], color="#ff0000", lw=2.5, linestyle='dashed', label='SE')
-                ]
-
-            else:
-                ax.plot(time, pe, label='PE', color='black', linestyle='solid')
-                ax.plot(time, se, label='SE', color='black', linestyle='dashed')
-                legend_items = [
-                    Line2D([0], [0], color='black', lw=2.5, linestyle='solid', label='PE'),
-                    Line2D([0], [0], color='black', lw=2.5, linestyle='dashed', label='SE')
-                ]
-
-            # Markers (optional)
-            ax.scatter(0, start[0], label='goal_PE', c='green', edgecolors='black', zorder=5)
-            ax.scatter(0, start[1], label='goal_SE', c='green', edgecolors='black', zorder=5)
-            ax.scatter(0, goal_1[0], label='start', c='red', edgecolors='black', zorder=5)
-            ax.scatter(0, goal_1[1], label='start', c='red', edgecolors='black', zorder=5)
-
-            ax.set_xlabel("time [s]")
-            ax.set_ylabel("DoF [°]")
-
-            # Activation colorbar
-            if with_cmap:
-                sm = plt.cm.ScalarMappable(cmap=red_cmap, norm=norm)
-                sm.set_array([])
-                fig.colorbar(sm, ax=ax, label="Muscle activation")
-
-            # Custom legend
-            ax.legend(handles=legend_items)
-            ax.set_title(f'DoFs - trial {trial}')
+    return {
+        'trial': trial,
+        'movement_pct': movement_grid,
+        'pe': pe_grid,
+        'se': se_grid,
+        'activation_isi': activation_isi,
+    }
 
 
 def main():
@@ -463,27 +424,114 @@ def main():
     path_to_repo = os.path.join(code_path, '..')          # getting path to the repository
     path_to_bag = os.path.join(path_to_repo, 'Personal_Results', 'bags', 'experiment_11')
 
-    # define initial and final times in percentage of the overall duration
-    time_0_percent = 0
-    time_final_percent = 99
-
     # load the strainmap dictionary used in the experiment
     # file_strainmaps = '/home/itbellix/Desktop/GitHub/PTbot_official/Personal_Results/Strains/Passive/AllMuscles/params_strainmaps_num_Gauss_3/params_strainmaps_num_Gauss_3.pkl' 
     file_strainmaps = os.path.join(path_to_repo, 'Musculoskeletal Models', 'Strain Maps', 'Active', 'differentiable_strainmaps_ISI.pkl')
 
     # select the subject and the trial(s) to analyze
     subject = 1 # available 1
-    trials = [1, 2, 3, 5, 6]   # available 1, 2, 3, 4, 5, 6 (subject 1)
+    trials = [1, 1, 2, 3, 5, 5, 6, 6]   # available 1, 2, 3, 4, 5, 6 (subject 1)
+
     # good appear to be 1, 2 (some parts), 3 (only first trajectory), 5, 6
+
+    # For each trial define two intervals, given
+    # as percentages of the FULL experiment duration. The data in the first interval is
+    # remapped to 0-50% of the displayed movement, the data in the second interval to
+    # 50-100%; the two segments are then concatenated for visualization and analysis.
+    trial_times = [
+        [(12, 25), (29, 54)],   # trial 1 (first trajectory)
+        [(56, 72), (75, 90)],   # trial 1 (second trajectory)
+        [(60, 72), (74, 95)],   # trial 2
+        [(10, 24), (26, 40)],   # trial 3
+        [(32, 45), (45, 55)],   # trial 5 (first trajectory)
+        [(63, 74), (76, 88)],   # trial 5 (second trajectory)
+        [(12, 29), (33, 43)],   # trial 6 (first trajectory)
+        [(55, 70), (71, 93)],   # trial 6 (second trajectory)
+    ]
 
     # allow a single trial (e.g. trials = 1) as well as a list of trials
     if np.isscalar(trials):
         trials = [trials]
 
-    # produce all the plots for each trial in sequence
-    for trial in trials:
-        print(f"\n===== Processing subject {subject}, trial {trial} =====")
-        process_trial(subject, trial, path_to_bag, file_strainmaps, time_0_percent, time_final_percent)
+    assert len(trial_times) == len(trials), \
+        "trial_times must have exactly one entry per trial in 'trials'"
+
+    # Optionally restrict only the PLOTS to a subset of the (trial, intervals) pairs.
+    # The SD analysis below always uses ALL pairs; this selection affects the overlaid
+    # figures only. Selection is positional (0-based), so a trial that appears more than
+    # once keeps the trial_times entry it is paired with. Set to None to plot all pairs.
+    # e.g. selected = [0, 2, 7] plots the 1st, 3rd and 8th pairs (left part of figure 10).
+    selected = [1, 3, 7]
+
+    # process every trial, collecting the resampled curves for the overlaid figures
+    results = []
+    for trial, intervals in zip(trials, trial_times):
+        (first_lo, first_hi), (second_lo, second_hi) = intervals
+        print(f"\n===== Processing subject {subject}, trial {trial} "
+              f"(intervals {first_lo}-{first_hi}% and {second_lo}-{second_hi}% of the recording) =====")
+        results.append(process_trial(subject, trial, path_to_bag, file_strainmaps, intervals))
+
+    # ---- aggregate variability metrics across trials (all resampled to the common grid) ----
+    # muscle activation: SD across trials at each movement sample, then averaged
+    activations = [res['activation_isi'] for res in results if res['activation_isi'] is not None]
+    if len(activations) > 1:
+        activations = np.vstack(activations)                    # (n_trials, MOVEMENT_SAMPLES)
+        std_activation = np.std(activations, axis=0, ddof=1)    # (MOVEMENT_SAMPLES,)
+        print(f"Mean SD of muscle activation (ISI) across trials: {np.mean(std_activation):.4f}")
+
+    # 2D trajectory: SD along the normal to the mean PE-SE curve, then averaged (see exp13)
+    all_xy = np.stack([np.column_stack((res['pe'], res['se'])) for res in results], axis=0)   # (n_trials, MOVEMENT_SAMPLES, 2)
+    if all_xy.shape[0] > 1:
+        mean_xy = np.mean(all_xy, axis=0)                       # (MOVEMENT_SAMPLES, 2)
+        dxy = np.gradient(mean_xy, axis=0)                      # tangent of the mean curve
+        tangent_norm = np.linalg.norm(dxy, axis=1, keepdims=True)
+        tangent_norm[tangent_norm == 0] = 1.0
+        tangent = dxy / tangent_norm
+        normal = np.column_stack((-tangent[:, 1], tangent[:, 0]))   # unit normal vector
+        diff = all_xy - mean_xy[None, :, :]                     # (n_trials, MOVEMENT_SAMPLES, 2)
+        normal_dist = np.sum(diff * normal[None, :, :], axis=2) # signed deviation along the normal
+        std_normal = np.std(normal_dist, axis=0, ddof=1)        # (MOVEMENT_SAMPLES,)
+        print(f"Mean SD of 2D trajectory (normal to mean curve): {np.mean(std_normal):.2f} deg")
+
+    # apply the plot-only selection defined above (the SD analysis above used all pairs)
+    results_to_plot = results if selected is None else [results[i] for i in selected]
+
+    # one distinct color per trial
+    colors = plt.cm.tab10(np.linspace(0, 1, 10))
+
+    # overlaid muscle activations (all trials, resampled to a common grid)
+    if PLOT_MUSCLE_ACTIVATION:
+        fig, ax = plt.subplots(figsize=(16, 4))
+        for i, res in enumerate(results_to_plot):
+            if res['activation_isi'] is not None:
+                ax.plot(res['movement_pct'], res['activation_isi'],
+                        color=colors[i % 10], label=f"trial {res['trial']}")
+        ax.set_xlabel('Movement [%]')
+        ax.set_ylabel('activation')
+        ax.set_title('Muscle activation - all trials (ISI)')
+        ax.set_xticks(np.arange(0, 101, 10))
+        ax.grid(axis='x', linestyle=':', alpha=0.6)
+        ax.legend()
+
+    # overlaid PE/SE degrees of freedom (all trials, resampled to a common grid)
+    if PLOT_2D_TRAJECTORY:
+        fig, ax = plt.subplots(figsize=(16, 4))
+        for i, res in enumerate(results_to_plot):
+            c = colors[i % 10]
+            ax.plot(res['movement_pct'], res['pe'], color=c, linestyle='solid')
+            ax.plot(res['movement_pct'], res['se'], color=c, linestyle='dashed')
+        legend_items = [Line2D([0], [0], color=colors[i % 10], lw=2.5, label=f"trial {res['trial']}")
+                        for i, res in enumerate(results_to_plot)]
+        legend_items += [
+            Line2D([0], [0], color='black', lw=2.5, linestyle='solid', label='PE'),
+            Line2D([0], [0], color='black', lw=2.5, linestyle='dashed', label='SE'),
+        ]
+        ax.set_xlabel('Movement [%]')
+        ax.set_ylabel('DoF [°]')
+        ax.set_title('DoFs - all trials')
+        ax.set_xticks(np.arange(0, 101, 10))
+        ax.grid(axis='x', linestyle=':', alpha=0.6)
+        ax.legend(handles=legend_items)
 
     # show all the produced figures at once
     plt.show(block=True)
